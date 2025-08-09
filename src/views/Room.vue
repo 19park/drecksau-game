@@ -271,7 +271,7 @@ const getPlayerEmoji = (order: number) => {
 }
 
 const getPlayerName = (player: any) => {
-  return player.user?.email?.split('@')[0] || `플레이어 ${player.player_order}`
+  return player.profile?.email?.split('@')[0] || `플레이어 ${player.player_order}`
 }
 
 const leaveRoom = async () => {

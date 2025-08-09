@@ -35,7 +35,7 @@ export interface RoomPlayer {
   player_order: number
   is_ready: boolean
   joined_at: string
-  user?: {
+  profile?: {
     email: string
   }
 }

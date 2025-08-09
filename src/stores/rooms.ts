@@ -231,7 +231,7 @@ export const useRoomsStore = defineStore('rooms', () => {
         .from('room_players')
         .select(`
           *,
-          user:player_id (
+          profile:player_id (
             email
           )
         `)
@@ -245,7 +245,7 @@ export const useRoomsStore = defineStore('rooms', () => {
       
       roomPlayers.value = players || []
       console.log('✅ Players loaded:', players?.length || 0, 'players')
-      console.log('👥 Players:', players?.map(p => ({ order: p.player_order, email: p.user?.email })))
+      console.log('👥 Players:', players?.map(p => ({ order: p.player_order, email: p.profile?.email })))
       
       // Check if current user is in the room
       const currentUserInRoom = players?.find(p => p.player_id === authStore.user?.id)

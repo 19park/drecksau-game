@@ -154,8 +154,8 @@ export function useGameLogic() {
   // Game state helpers
   const getPlayerName = (playerId: string) => {
     const player = gameStore.roomPlayers.find(p => p.player_id === playerId)
-    if (player?.user?.email) {
-      return player.user.email.split('@')[0]
+    if (player?.profile?.email) {
+      return player.profile.email.split('@')[0]
     }
     return `플레이어 ${playerId.slice(-4)}`
   }
@@ -167,8 +167,8 @@ export function useGameLogic() {
 
   const getCurrentPlayerName = () => {
     const currentPlayer = gameStore.currentPlayer
-    if (currentPlayer?.user?.email) {
-      return currentPlayer.user.email.split('@')[0]
+    if (currentPlayer?.profile?.email) {
+      return currentPlayer.profile.email.split('@')[0]
     }
     return gameStore.gameState ? `플레이어 ${gameStore.gameState.current_player_order}` : ''
   }
