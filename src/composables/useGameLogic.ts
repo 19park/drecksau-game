@@ -1,12 +1,10 @@
-import { computed, ref } from 'vue'
+import { ref } from 'vue'
 import { useGameStore } from '@/stores/game'
-import { useAuthStore } from '@/stores/auth'
 import type { CardType, PlayerPig } from '@/types/game'
 import { CARD_CONFIGS } from '@/types/game'
 
 export function useGameLogic() {
   const gameStore = useGameStore()
-  const authStore = useAuthStore()
   
   const showTargetSelector = ref(false)
   const availableTargets = ref<PlayerPig[]>([])
@@ -175,12 +173,6 @@ export function useGameLogic() {
     return gameStore.gameState ? `플레이어 ${gameStore.gameState.current_player_order}` : ''
   }
 
-  const isPlayerTurn = (playerId: string): boolean => {
-    if (!gameStore.gameState) return false
-    const playerOrder = getPlayerOrder(playerId)
-    return gameStore.gameState.current_player_order === playerOrder
-  }
-
   // Card effect descriptions
   const getCardDescription = (cardType: CardType): string => {
     switch (cardType) {
@@ -279,7 +271,6 @@ export function useGameLogic() {
     getPlayerName,
     getPlayerOrder,
     getCurrentPlayerName,
-    isPlayerTurn,
     getGamePhaseText,
     getWinConditionText,
     

@@ -15,20 +15,20 @@
     </router-link>
   </div>
 
-  <div v-else-if="currentRoom" class="space-y-6">
+  <div v-else-if="roomsStore.currentRoom" class="space-y-6">
     <!-- Room Header -->
     <div class="card-base">
       <div class="flex items-center justify-between mb-4">
         <div>
           <div class="flex items-center gap-3 mb-2">
-            <h1 class="font-game text-3xl text-primary-600">{{ currentRoom.name }}</h1>
-            <span v-if="currentRoom.is_expansion" class="text-sm bg-purple-100 text-purple-800 px-3 py-1 rounded-full">
+            <h1 class="font-game text-3xl text-primary-600">{{ roomsStore.currentRoom?.name }}</h1>
+            <span v-if="roomsStore.currentRoom?.is_expansion" class="text-sm bg-purple-100 text-purple-800 px-3 py-1 rounded-full">
               확장판
             </span>
           </div>
           <div class="flex items-center gap-4 text-sm text-gray-600">
-            <span>👥 {{ roomPlayers.length }}/{{ currentRoom.max_players }} 명</span>
-            <span>🎯 {{ currentRoom.status === 'waiting' ? '대기 중' : '게임 중' }}</span>
+            <span>👥 {{ roomsStore.roomPlayers.length }}/{{ roomsStore.currentRoom?.max_players }} 명</span>
+            <span>🎯 {{ roomsStore.currentRoom?.status === 'waiting' ? '대기 중' : '게임 중' }}</span>
             <span v-if="isRoomCreator">👑 방장</span>
           </div>
         </div>
@@ -72,7 +72,7 @@
                   <span class="font-medium">
                     {{ getPlayerName(player) }}
                   </span>
-                  <span v-if="currentRoom.creator_id === player.player_id" class="text-xs bg-yellow-100 text-yellow-800 px-2 py-1 rounded-full">
+                  <span v-if="roomsStore.currentRoom?.creator_id === player.player_id" class="text-xs bg-yellow-100 text-yellow-800 px-2 py-1 rounded-full">
                     방장
                   </span>
                   <span v-if="player.player_id === user?.id" class="text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded-full">
@@ -122,7 +122,7 @@
       
       <div class="space-y-4">
         <!-- Ready Button -->
-        <div v-if="currentPlayer && currentRoom.status === 'waiting'">
+        <div v-if="currentPlayer && roomsStore.currentRoom?.status === 'waiting'">
           <button 
             @click="toggleReady"
             :disabled="loading"
@@ -138,7 +138,7 @@
         </div>
         
         <!-- Start Game Button -->
-        <div v-if="isRoomCreator && currentRoom.status === 'waiting'">
+        <div v-if="isRoomCreator && roomsStore.currentRoom?.status === 'waiting'">
           <button 
             @click="startGame"
             :disabled="!canStartGame || loading"
@@ -152,7 +152,7 @@
           </button>
           
           <div v-if="!canStartGame" class="mt-2 text-sm text-gray-600 text-center">
-            <div v-if="roomPlayers.length < 2">
+            <div v-if="roomsStore.roomPlayers.length < 2">
               ⚠️ 최소 2명의 플레이어가 필요합니다
             </div>
             <div v-else-if="!allPlayersReady">
@@ -162,12 +162,12 @@
         </div>
         
         <!-- Game in Progress -->
-        <div v-if="currentRoom.status === 'playing'" class="text-center">
+        <div v-if="roomsStore.currentRoom?.status === 'playing'" class="text-center">
           <div class="text-4xl mb-4">🎮</div>
           <h3 class="text-xl font-semibold text-green-600 mb-2">게임 진행 중</h3>
           <p class="text-gray-600 mb-4">게임이 시작되었습니다!</p>
           <router-link 
-            :to="`/game/${currentRoom.id}`"
+            :to="`/game/${roomsStore.currentRoom?.id}`"
             class="btn-primary"
           >
             게임 입장하기
@@ -237,8 +237,6 @@ const roomId = route.params.id as string
 
 // Computed
 const { 
-  currentRoom, 
-  roomPlayers, 
   loading, 
   error,
   isRoomCreator,
@@ -253,17 +251,17 @@ const {
 const user = computed(() => authStore.user)
 
 const sortedPlayers = computed(() => 
-  [...roomPlayers.value].sort((a, b) => a.player_order - b.player_order)
+  [...roomsStore.roomPlayers].sort((a, b) => a.player_order - b.player_order)
 )
 
 const emptySlots = computed(() => {
-  const currentSlots = currentRoom.value?.max_players || 4
-  const filledSlots = roomPlayers.value.length
+  const currentSlots = roomsStore.currentRoom?.max_players || 4
+  const filledSlots = roomsStore.roomPlayers.length
   return Array.from({ length: Math.max(0, currentSlots - filledSlots) }, (_, i) => i + filledSlots + 1)
 })
 
 const allPlayersReady = computed(() => 
-  roomPlayers.value.every(player => player.is_ready)
+  roomsStore.roomPlayers.every((player: any) => player.is_ready)
 )
 
 // Methods
@@ -286,7 +284,7 @@ const leaveRoom = async () => {
 }
 
 const startGame = async () => {
-  if (!canStartGame.value) return
+  if (!canStartGame) return
   
   try {
     console.log('🚀 Starting game for room:', roomId)

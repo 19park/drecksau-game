@@ -7,9 +7,7 @@ import type {
   PlayerPig, 
   PlayerHand, 
   GameDeck, 
-  CardType, 
-  GameMessage,
-  GameAction
+  CardType
 } from '@/types/game'
 import type { RealtimeChannel } from '@supabase/supabase-js'
 

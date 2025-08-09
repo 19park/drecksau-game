@@ -162,7 +162,7 @@ const groupedTargets = computed(() => {
       groups.set(pig.player_id, {
         playerId: pig.player_id,
         playerName: getPlayerName(pig.player_id),
-        playerOrder: getPlayerOrder(pig.player_id),
+        playerOrder: getPlayerOrder(),
         isCurrentUser: pig.player_id === authStore.user?.id,
         pigs: []
       })
@@ -185,7 +185,7 @@ const getPlayerEmoji = (order: number) => {
   return emojis[order - 1] || '👤'
 }
 
-const getPlayerOrder = (playerId: string): number => {
+const getPlayerOrder = (): number => {
   // TODO: Get from actual player data - for now return 1 as default
   return 1
 }

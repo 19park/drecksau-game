@@ -95,7 +95,7 @@
                     </span>
                   </div>
                   <div class="text-sm text-gray-600">
-                    🃏 {{ getPlayerHandCount(player.player_id) }}장
+                    🃏 {{ getPlayerHandCount() }}장
                   </div>
                 </div>
                 
@@ -342,9 +342,7 @@ const {
   initiateCardPlay,
   selectTarget,
   closeTargetSelector,
-  getPlayerName,
-  getCurrentPlayerName,
-  getWinConditionText
+  getCurrentPlayerName
 } = useGameLogic()
 
 // Reactive state
@@ -384,7 +382,7 @@ const isCurrentPlayer = (order: number) => {
   return gameStore.gameState?.current_player_order === order
 }
 
-const getPlayerHandCount = (playerId: string) => {
+const getPlayerHandCount = () => {
   // For other players, we don't know their exact hand count for security
   // This would come from game state or be estimated
   return 3
@@ -392,18 +390,6 @@ const getPlayerHandCount = (playerId: string) => {
 
 const getPlayerPigs = (playerId: string) => {
   return gameStore.otherPlayersPigs.filter(pig => pig.player_id === playerId)
-}
-
-const getPigEmoji = (pig: any) => {
-  return useGameLogic().getPigEmoji(pig)
-}
-
-const getCardEmoji = (cardType: string) => {
-  return useGameLogic().getCardEmoji(cardType as any)
-}
-
-const getCardName = (cardType: string) => {
-  return useGameLogic().getCardName(cardType as any)
 }
 
 const handleCardPlay = async (cardType: string) => {

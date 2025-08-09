@@ -122,7 +122,7 @@ export const useRoomsStore = defineStore('rooms', () => {
       }
       
       // Check if already joined
-      const existingPlayer = room.room_players?.find(p => p.player_id === authStore.user!.id)
+      const existingPlayer = room.room_players?.find((p: any) => p.player_id === authStore.user!.id)
       if (existingPlayer) {
         // Already joined, just load the room
         await loadRoom(roomId)
@@ -130,7 +130,7 @@ export const useRoomsStore = defineStore('rooms', () => {
       }
       
       // Find next available player order
-      const usedOrders = room.room_players?.map(p => p.player_order) || []
+      const usedOrders = room.room_players?.map((p: any) => p.player_order) || []
       let playerOrder = 1
       while (usedOrders.includes(playerOrder)) {
         playerOrder++
