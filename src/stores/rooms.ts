@@ -151,12 +151,23 @@ export const useRoomsStore = defineStore('rooms', () => {
         return { error: null }
       }
       
-      // Find next available player order
-      const usedOrders = room.room_players?.map((p: any) => p.player_order) || []
+      // Get the latest room_players data to avoid race conditions
+      const { data: latestPlayers, error: playersError } = await supabase
+        .from('room_players')
+        .select('player_order')
+        .eq('room_id', roomId)
+        .order('player_order')
+      
+      if (playersError) throw playersError
+      
+      // Find next available player order more safely
+      const usedOrders = latestPlayers?.map(p => p.player_order) || []
       let playerOrder = 1
       while (usedOrders.includes(playerOrder)) {
         playerOrder++
       }
+      
+      console.log('🎯 Joining room with player_order:', playerOrder, 'used orders:', usedOrders)
       
       // Join room
       const { error: joinError } = await supabase
