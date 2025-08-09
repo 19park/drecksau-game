@@ -1,0 +1,50 @@
+{
+  "mcpServers": {
+    "Framelink Figma MCP": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "figma-developer-mcp",
+        "--figma-api-key=figd_VTJtjiFf01u58gaIRsa8kvi1zkCZhQ2F10M2Jmln",
+        "--stdio"
+      ],
+      "type": "stdio"
+    },
+    "Context7": {
+      "type": "stdio",
+      "command": "npx",
+      "args": [
+        "-y",
+        "@smithery/cli@latest",
+        "run",
+        "@upstash/context7-mcp",
+        "--key",
+        "fc3ad7fe-11d3-4a6c-94ad-0835453868d6"
+      ]
+    },
+    "sequential-thinking": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@modelcontextprotocol/server-sequential-thinking"
+      ],
+      "type": "stdio"
+    },
+    "serena": {
+      "command": "/abs/path/to/uv",
+      "args": ["run", "--directory", "/abs/path/to/serena", "serena", "start-mcp-server"]
+    },
+    "supabase": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@supabase/mcp-server-supabase@latest",
+        "--read-only",
+        "--project-ref=flmqcepufgtjlcyqbwfi"
+      ],
+      "env": {
+        "SUPABASE_ACCESS_TOKEN": "sbp_0c3e73b64ec91198e72d795e3b1b9a9593b5a2f4"
+      }
+    }
+  }
+}
