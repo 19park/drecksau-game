@@ -47,16 +47,23 @@ export const useRoomsStore = defineStore('rooms', () => {
     error.value = ''
     
     try {
+      console.log('🔍 Fetching rooms...')
       const { data, error: fetchError } = await supabase
         .from('rooms')
         .select('*')
         .order('created_at', { ascending: false })
       
-      if (fetchError) throw fetchError
+      if (fetchError) {
+        console.error('❌ Error fetching rooms:', fetchError)
+        throw fetchError
+      }
+      
+      console.log('✅ Rooms fetched:', data?.length || 0, 'rooms')
+      console.log('📋 Room list:', data?.map(r => ({ id: r.id.slice(0, 8), name: r.name, current: r.current_players })))
       rooms.value = data || []
     } catch (err: any) {
       error.value = err.message
-      console.error('Error fetching rooms:', err)
+      console.error('❌ Error fetching rooms:', err)
     } finally {
       loading.value = false
     }
