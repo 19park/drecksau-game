@@ -1,150 +1,332 @@
 <template>
-  <div class="flex flex-col items-center justify-center min-h-[80vh]">
-    <div class="card-base max-w-md w-full">
+  <div class="min-h-screen bg-gradient-to-br from-green-50 to-blue-50 flex items-center justify-center p-4">
+    <div class="w-full max-w-md">
+      <!-- Header -->
       <div class="text-center mb-8">
-        <span class="text-6xl">🐷</span>
-        <h1 class="font-game text-3xl text-primary-600 mt-4">로그인</h1>
-        <p class="text-gray-600 mt-2">드렉사우 게임에 참가하세요!</p>
+        <div class="text-6xl mb-4">🐷</div>
+        <h1 class="font-game text-4xl text-primary-600 mb-2">드렉사우</h1>
+        <p class="text-gray-600">실시간 멀티플레이어 보드게임</p>
       </div>
-      
+
       <!-- Login Form -->
-      <form @submit.prevent="handleLogin" class="space-y-4">
-        <div>
-          <label for="email" class="block text-sm font-medium text-gray-700 mb-1">
-            이메일
-          </label>
-          <input
-            id="email"
-            v-model="email"
-            type="email"
-            required
-            class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
-            placeholder="your@email.com"
-          />
-        </div>
-        
-        <div>
-          <label for="password" class="block text-sm font-medium text-gray-700 mb-1">
-            비밀번호
-          </label>
-          <input
-            id="password"
-            v-model="password"
-            type="password"
-            required
-            class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
-            placeholder="••••••••"
-          />
-        </div>
-        
-        <div v-if="error" class="text-red-500 text-sm">
-          {{ error }}
-        </div>
-        
-        <button
-          type="submit"
-          :disabled="loading"
-          class="w-full btn-primary"
-        >
-          <span v-if="loading" class="loading-spinner mr-2"></span>
-          {{ loading ? '로그인 중...' : '로그인' }}
-        </button>
-      </form>
-      
-      <div class="mt-6">
-        <div class="relative">
-          <div class="absolute inset-0 flex items-center">
-            <div class="w-full border-t border-gray-300"></div>
+      <div class="card-base">
+        <div class="space-y-6">
+          <!-- Tab Toggle -->
+          <div class="flex bg-gray-100 rounded-lg p-1">
+            <button 
+              @click="loginMode = 'simple'"
+              class="flex-1 py-2 px-4 text-sm font-medium rounded-md transition-colors"
+              :class="loginMode === 'simple' ? 'bg-white text-primary-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'"
+            >
+              간편 로그인
+            </button>
+            <button 
+              @click="loginMode = 'password'"
+              class="flex-1 py-2 px-4 text-sm font-medium rounded-md transition-colors"
+              :class="loginMode === 'password' ? 'bg-white text-primary-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'"
+            >
+              이메일/비밀번호
+            </button>
           </div>
-          <div class="relative flex justify-center text-sm">
-            <span class="px-2 bg-white text-gray-500">또는</span>
+
+          <!-- Simple Login Mode -->
+          <div v-if="loginMode === 'simple'" class="space-y-4">
+            <div>
+              <label for="email-simple" class="block text-sm font-medium text-gray-700 mb-2">
+                이메일 주소
+              </label>
+              <input
+                id="email-simple"
+                v-model="email"
+                type="email"
+                required
+                placeholder="your@email.com"
+                class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                :disabled="loading"
+                @keyup.enter="handleSimpleLogin"
+              >
+              <p class="mt-1 text-xs text-gray-500">
+                📧 이메일로 로그인 링크를 보내드립니다
+              </p>
+            </div>
+            
+            <button
+              @click="handleSimpleLogin"
+              :disabled="!isValidEmail || loading"
+              class="w-full btn-primary py-3"
+              :class="{ 'opacity-50 cursor-not-allowed': !isValidEmail || loading }"
+            >
+              <span v-if="loading && currentAction === 'magic'" class="loading-spinner mr-2"></span>
+              {{ loading && currentAction === 'magic' ? '전송 중...' : '🔗 로그인 링크 받기' }}
+            </button>
+
+            <!-- Divider -->
+            <div class="relative">
+              <div class="absolute inset-0 flex items-center">
+                <div class="w-full border-t border-gray-300"></div>
+              </div>
+              <div class="relative flex justify-center text-sm">
+                <span class="px-2 bg-white text-gray-500">또는</span>
+              </div>
+            </div>
+
+            <!-- Google Login -->
+            <button
+              @click="handleGoogleLogin"
+              :disabled="loading"
+              class="w-full flex items-center justify-center gap-3 py-3 px-4 border border-gray-300 rounded-md hover:bg-gray-50 transition-colors font-medium text-gray-700"
+              :class="{ 'opacity-50 cursor-not-allowed': loading }"
+            >
+              <span v-if="loading && currentAction === 'google'" class="loading-spinner"></span>
+              <svg v-else class="w-5 h-5" viewBox="0 0 24 24">
+                <path fill="currentColor" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
+                <path fill="currentColor" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
+                <path fill="currentColor" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/>
+                <path fill="currentColor" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/>
+              </svg>
+              {{ loading && currentAction === 'google' ? '처리 중...' : 'Google로 시작하기' }}
+            </button>
           </div>
-        </div>
-        
-        <div class="mt-6 space-y-3">
-          <button
-            @click="handleMagicLink"
-            :disabled="!email || loading"
-            class="w-full btn-secondary"
-          >
-            <span v-if="loadingMagic" class="loading-spinner mr-2"></span>
-            {{ loadingMagic ? '전송 중...' : '매직 링크로 로그인' }}
-          </button>
-          
-          <button
-            @click="toggleMode"
-            class="w-full text-primary-600 hover:text-primary-800 font-medium"
-          >
-            {{ isLoginMode ? '계정이 없으신가요? 회원가입' : '이미 계정이 있으신가요? 로그인' }}
-          </button>
+
+          <!-- Password Login Mode -->
+          <div v-else class="space-y-4">
+            <div>
+              <label for="email-password" class="block text-sm font-medium text-gray-700 mb-2">
+                이메일 주소
+              </label>
+              <input
+                id="email-password"
+                v-model="email"
+                type="email"
+                required
+                placeholder="your@email.com"
+                class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                :disabled="loading"
+              >
+            </div>
+            
+            <div>
+              <label for="password" class="block text-sm font-medium text-gray-700 mb-2">
+                비밀번호
+              </label>
+              <input
+                id="password"
+                v-model="password"
+                type="password"
+                required
+                placeholder="비밀번호를 입력하세요"
+                class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                :disabled="loading"
+                @keyup.enter="handlePasswordLogin"
+              >
+              <p class="mt-1 text-xs text-gray-500">
+                👤 계정이 없다면 자동으로 회원가입됩니다
+              </p>
+            </div>
+            
+            <button
+              @click="handlePasswordLogin"
+              :disabled="!isValidForm || loading"
+              class="w-full btn-primary py-3"
+              :class="{ 'opacity-50 cursor-not-allowed': !isValidForm || loading }"
+            >
+              <span v-if="loading && currentAction === 'password'" class="loading-spinner mr-2"></span>
+              {{ loading && currentAction === 'password' ? (isNewUser ? '회원가입 중...' : '로그인 중...') : '🚀 시작하기' }}
+            </button>
+          </div>
+
+          <!-- Success Message -->
+          <div v-if="successMessage" class="bg-green-50 border border-green-200 rounded-md p-4">
+            <div class="flex">
+              <div class="flex-shrink-0">
+                <span class="text-green-400 text-xl">✅</span>
+              </div>
+              <div class="ml-3">
+                <p class="text-sm text-green-800">{{ successMessage }}</p>
+              </div>
+            </div>
+          </div>
+
+          <!-- Error Message -->
+          <div v-if="errorMessage" class="bg-red-50 border border-red-200 rounded-md p-4">
+            <div class="flex">
+              <div class="flex-shrink-0">
+                <span class="text-red-400 text-xl">❌</span>
+              </div>
+              <div class="ml-3">
+                <p class="text-sm text-red-800">{{ errorMessage }}</p>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
-      
-      <!-- Success Message -->
-      <div v-if="successMessage" class="mt-4 p-3 bg-green-100 border border-green-400 text-green-700 rounded-lg">
-        {{ successMessage }}
+
+      <!-- Footer -->
+      <div class="text-center mt-8 text-sm text-gray-500">
+        <p>더럽고 재미있는 돼지 게임의 세계로!</p>
+        <div class="mt-2 flex justify-center gap-4">
+          <span>🐷 더러운 돼지</span>
+          <span>🏠 헛간</span>
+          <span>🌧️ 비</span>
+          <span>⚡ 벼락</span>
+        </div>
       </div>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, computed } from 'vue'
+import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 
+const router = useRouter()
 const authStore = useAuthStore()
 
+// Form state
+const loginMode = ref<'simple' | 'password'>('simple')
 const email = ref('')
 const password = ref('')
-const error = ref('')
-const successMessage = ref('')
 const loading = ref(false)
-const loadingMagic = ref(false)
-const isLoginMode = ref(true)
+const currentAction = ref<'magic' | 'google' | 'password' | null>(null)
+const successMessage = ref('')
+const errorMessage = ref('')
+const isNewUser = ref(false)
 
-const handleLogin = async () => {
-  error.value = ''
-  
-  if (!email.value || !password.value) {
-    error.value = '이메일과 비밀번호를 입력해주세요.'
-    return
-  }
-  
-  const result = isLoginMode.value 
-    ? await authStore.signIn(email.value, password.value)
-    : await authStore.signUp(email.value, password.value)
-  
-  if (result.error) {
-    error.value = result.error
-  } else if (!isLoginMode.value) {
-    successMessage.value = '회원가입이 완료되었습니다! 이메일을 확인해주세요.'
-  }
-}
+// Computed
+const isValidEmail = computed(() => {
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+  return emailRegex.test(email.value)
+})
 
-const handleMagicLink = async () => {
-  error.value = ''
-  
-  if (!email.value) {
-    error.value = '이메일을 입력해주세요.'
-    return
-  }
-  
-  loadingMagic.value = true
-  
-  const result = await authStore.signInWithMagicLink(email.value)
-  
-  if (result.error) {
-    error.value = result.error
-  } else {
-    successMessage.value = '매직 링크를 이메일로 전송했습니다! 이메일을 확인해주세요.'
-  }
-  
-  loadingMagic.value = false
-}
+const isValidForm = computed(() => {
+  return isValidEmail.value && password.value.length >= 6
+})
 
-const toggleMode = () => {
-  isLoginMode.value = !isLoginMode.value
-  error.value = ''
+// Methods
+const clearMessages = () => {
   successMessage.value = ''
+  errorMessage.value = ''
+}
+
+const handleSimpleLogin = async () => {
+  if (!isValidEmail.value || loading.value) return
+  
+  clearMessages()
+  loading.value = true
+  currentAction.value = 'magic'
+  
+  try {
+    const result = await authStore.signInWithMagicLink(email.value)
+    
+    if (result.error) {
+      errorMessage.value = result.error
+    } else {
+      successMessage.value = `${email.value}로 로그인 링크를 보냈습니다. 이메일을 확인해주세요! 📧`
+    }
+  } catch (error: any) {
+    errorMessage.value = error.message || '알 수 없는 오류가 발생했습니다'
+  } finally {
+    loading.value = false
+    currentAction.value = null
+  }
+}
+
+const handleGoogleLogin = async () => {
+  if (loading.value) return
+  
+  clearMessages()
+  loading.value = true
+  currentAction.value = 'google'
+  
+  try {
+    const result = await authStore.signInWithGoogle()
+    
+    if (result.error) {
+      errorMessage.value = result.error
+      loading.value = false
+      currentAction.value = null
+    }
+    // If successful, user will be redirected by OAuth flow
+  } catch (error: any) {
+    errorMessage.value = error.message || '구글 로그인 중 오류가 발생했습니다'
+    loading.value = false
+    currentAction.value = null
+  }
+}
+
+const handlePasswordLogin = async () => {
+  if (!isValidForm.value || loading.value) return
+  
+  clearMessages()
+  loading.value = true
+  currentAction.value = 'password'
+  
+  try {
+    const result = await authStore.signUpOrSignIn(email.value, password.value)
+    
+    if (result.error) {
+      errorMessage.value = result.error
+    } else {
+      isNewUser.value = result.isNewUser || false
+      if (result.isNewUser) {
+        successMessage.value = '회원가입이 완료되었습니다! 이메일을 확인해 주세요. 📧'
+      } else {
+        successMessage.value = '로그인 성공! 게임 로비로 이동합니다... 🎮'
+        setTimeout(() => {
+          router.push('/lobby')
+        }, 2000)
+      }
+    }
+  } catch (error: any) {
+    errorMessage.value = error.message || '알 수 없는 오류가 발생했습니다'
+  } finally {
+    loading.value = false
+    currentAction.value = null
+  }
 }
 </script>
+
+<style scoped>
+.loading-spinner {
+  width: 16px;
+  height: 16px;
+  border: 2px solid #f3f4f6;
+  border-top: 2px solid #10b981;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+  display: inline-block;
+}
+
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+.card-base {
+  background: white;
+  border-radius: 0.75rem;
+  box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+  padding: 2rem;
+}
+
+.btn-primary {
+  background: linear-gradient(135deg, #10b981, #059669);
+  color: white;
+  font-weight: 600;
+  border-radius: 0.5rem;
+  transition: all 0.2s;
+  border: none;
+}
+
+.btn-primary:hover:not(:disabled) {
+  background: linear-gradient(135deg, #059669, #047857);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3);
+}
+
+.font-game {
+  font-family: 'Comic Sans MS', cursive, sans-serif;
+  font-weight: bold;
+}
+</style>

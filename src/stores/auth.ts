@@ -97,7 +97,7 @@ export const useAuthStore = defineStore('auth', () => {
       const { data, error } = await supabase.auth.signInWithOtp({
         email,
         options: {
-          emailRedirectTo: `${window.location.origin}/lobby`
+          emailRedirectTo: `${window.location.origin}/auth/callback`
         }
       })
       
@@ -111,6 +111,105 @@ export const useAuthStore = defineStore('auth', () => {
     }
   }
 
+  const signInWithGoogle = async () => {
+    loading.value = true
+    
+    try {
+      const { data, error } = await supabase.auth.signInWithOAuth({
+        provider: 'google',
+        options: {
+          redirectTo: `${window.location.origin}/auth/callback`
+        }
+      })
+      
+      if (error) throw error
+      
+      return { data, error: null }
+    } catch (error: any) {
+      return { data: null, error: error.message }
+    } finally {
+      loading.value = false
+    }
+  }
+
+  const handleAuthCallback = async () => {
+    loading.value = true
+    
+    try {
+      // Handle the callback from magic link or OAuth
+      const { data, error } = await supabase.auth.getSession()
+      
+      if (error) {
+        console.error('Auth callback error:', error)
+        return { error: error.message }
+      }
+      
+      if (data.session) {
+        user.value = data.session.user
+        console.log('✅ User authenticated:', data.session.user.email)
+        return { error: null, user: data.session.user }
+      } else {
+        return { error: '로그인 세션을 찾을 수 없습니다' }
+      }
+    } catch (error: any) {
+      console.error('Unexpected auth callback error:', error)
+      return { error: error.message || '알 수 없는 오류가 발생했습니다' }
+    } finally {
+      loading.value = false
+    }
+  }
+
+  const signUpOrSignIn = async (email: string, password?: string) => {
+    if (!password) {
+      // No password provided, use magic link
+      return await signInWithMagicLink(email)
+    }
+    
+    loading.value = true
+    
+    try {
+      // First try to sign in
+      const signInResult = await supabase.auth.signInWithPassword({
+        email,
+        password
+      })
+      
+      if (signInResult.error) {
+        // If sign in fails, try to sign up
+        if (signInResult.error.message.includes('Invalid login credentials')) {
+          const signUpResult = await supabase.auth.signUp({
+            email,
+            password,
+            options: {
+              emailRedirectTo: `${window.location.origin}/auth/callback`
+            }
+          })
+          
+          if (signUpResult.error) throw signUpResult.error
+          
+          return { 
+            data: signUpResult.data, 
+            error: null, 
+            isNewUser: true 
+          }
+        } else {
+          throw signInResult.error
+        }
+      }
+      
+      return { 
+        data: signInResult.data, 
+        error: null, 
+        isNewUser: false 
+      }
+      
+    } catch (error: any) {
+      return { data: null, error: error.message, isNewUser: false }
+    } finally {
+      loading.value = false
+    }
+  }
+
   return {
     user,
     loading,
@@ -119,6 +218,9 @@ export const useAuthStore = defineStore('auth', () => {
     signIn,
     signUp,
     signOut,
-    signInWithMagicLink
+    signInWithMagicLink,
+    signInWithGoogle,
+    handleAuthCallback,
+    signUpOrSignIn
   }
 })
