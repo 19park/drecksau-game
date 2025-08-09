@@ -66,3 +66,7 @@ coverage/
 tmp/
 temp/
 EOF < /dev/null
+
+
+.claude
+.mcp.json
