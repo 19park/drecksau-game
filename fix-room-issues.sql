@@ -52,5 +52,23 @@ SET current_players = (
 
 -- 4. Enable realtime for rooms table (if not already enabled)
 -- This ensures room list updates are broadcasted to all clients
-ALTER PUBLICATION supabase_realtime ADD TABLE rooms;
-ALTER PUBLICATION supabase_realtime ADD TABLE room_players;
+-- Check if tables are already in publication
+DO $$
+BEGIN
+    -- Add rooms table if not already added
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_publication_tables 
+        WHERE pubname = 'supabase_realtime' AND tablename = 'rooms'
+    ) THEN
+        ALTER PUBLICATION supabase_realtime ADD TABLE rooms;
+    END IF;
+    
+    -- Add room_players table if not already added
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_publication_tables 
+        WHERE pubname = 'supabase_realtime' AND tablename = 'room_players'
+    ) THEN
+        ALTER PUBLICATION supabase_realtime ADD TABLE room_players;
+    END IF;
+END
+$$;

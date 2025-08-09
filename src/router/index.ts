@@ -50,14 +50,31 @@ const router = createRouter({
 })
 
 // Auth guard
-router.beforeEach((to, _from, next) => {
+router.beforeEach(async (to, _from, next) => {
   const authStore = useAuthStore()
   
+  // If auth store is not initialized yet, wait for initialization
+  if (!authStore.initialized) {
+    console.log('🔒 Router guard: waiting for auth initialization...')
+    await authStore.initialize()
+  }
+  
+  console.log('🔒 Router guard check:', { 
+    path: to.path, 
+    requiresAuth: to.meta.requiresAuth, 
+    requiresGuest: to.meta.requiresGuest,
+    hasUser: !!authStore.user,
+    userEmail: authStore.user?.email 
+  })
+  
   if (to.meta.requiresAuth && !authStore.user) {
+    console.log('🔒 Redirecting to login (no user)')
     next('/login')
   } else if (to.meta.requiresGuest && authStore.user) {
+    console.log('🔒 Redirecting to lobby (already logged in)')
     next('/lobby')
   } else {
+    console.log('🔒 Allowing navigation')
     next()
   }
 })

@@ -7,11 +7,17 @@ import { useRouter } from 'vue-router'
 export const useAuthStore = defineStore('auth', () => {
   const user = ref<User | null>(null)
   const loading = ref(false)
+  const initialized = ref(false)
   const router = useRouter()
 
   const isAuthenticated = computed(() => !!user.value)
 
   const initialize = async () => {
+    if (initialized.value) {
+      console.log('🔍 Auth already initialized')
+      return
+    }
+    
     loading.value = true
     
     try {
@@ -30,19 +36,23 @@ export const useAuthStore = defineStore('auth', () => {
         user.value = null
       }
 
-      // Listen for auth changes
-      supabase.auth.onAuthStateChange((event, session) => {
-        console.log('🔄 Auth state change:', event, session?.user?.email)
-        user.value = session?.user ?? null
-        
-        if (event === 'SIGNED_IN') {
-          console.log('✅ User signed in, redirecting to lobby')
-          router.push('/lobby')
-        } else if (event === 'SIGNED_OUT') {
-          console.log('⚠️ User signed out, redirecting to login')
-          router.push('/login')
-        }
-      })
+      // Listen for auth changes (only once)
+      if (!initialized.value) {
+        supabase.auth.onAuthStateChange((event, session) => {
+          console.log('🔄 Auth state change:', event, session?.user?.email)
+          user.value = session?.user ?? null
+          
+          if (event === 'SIGNED_IN') {
+            console.log('✅ User signed in, redirecting to lobby')
+            router.push('/lobby')
+          } else if (event === 'SIGNED_OUT') {
+            console.log('⚠️ User signed out, redirecting to login')
+            router.push('/login')
+          }
+        })
+      }
+      
+      initialized.value = true
     } catch (error) {
       console.error('❌ Error initializing auth:', error)
       user.value = null
@@ -181,6 +191,7 @@ export const useAuthStore = defineStore('auth', () => {
   return {
     user,
     loading,
+    initialized,
     isAuthenticated,
     initialize,
     signOut,
