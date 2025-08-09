@@ -4,7 +4,9 @@
       "mcp__Context7__resolve-library-id",
       "mcp__Context7__get-library-docs",
       "mcp__supabase__search_docs",
-      "Bash(npm run build:*)"
+      "Bash(npm run build:*)",
+      "mcp__supabase__execute_sql",
+      "mcp__supabase__apply_migration"
     ]
   },
   "enableAllProjectMcpServers": true,

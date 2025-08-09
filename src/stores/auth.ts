@@ -15,22 +15,37 @@ export const useAuthStore = defineStore('auth', () => {
     loading.value = true
     
     try {
+      console.log('🔍 Initializing auth...')
+      
       // Get current session
-      const { data: { session } } = await supabase.auth.getSession()
-      user.value = session?.user ?? null
+      const { data: { session }, error } = await supabase.auth.getSession()
+      
+      if (error) {
+        console.error('❌ Error getting session:', error)
+      } else if (session) {
+        console.log('✅ Session found:', session.user.email)
+        user.value = session.user
+      } else {
+        console.log('ℹ️ No session found')
+        user.value = null
+      }
 
       // Listen for auth changes
       supabase.auth.onAuthStateChange((event, session) => {
+        console.log('🔄 Auth state change:', event, session?.user?.email)
         user.value = session?.user ?? null
         
         if (event === 'SIGNED_IN') {
+          console.log('✅ User signed in, redirecting to lobby')
           router.push('/lobby')
         } else if (event === 'SIGNED_OUT') {
+          console.log('⚠️ User signed out, redirecting to login')
           router.push('/login')
         }
       })
     } catch (error) {
-      console.error('Error initializing auth:', error)
+      console.error('❌ Error initializing auth:', error)
+      user.value = null
     } finally {
       loading.value = false
     }

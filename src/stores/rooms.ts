@@ -69,6 +69,8 @@ export const useRoomsStore = defineStore('rooms', () => {
     error.value = ''
     
     try {
+      console.log('🏠 Creating room:', { name, maxPlayers, isExpansion })
+      
       const { data, error: createError } = await supabase
         .from('rooms')
         .insert({
@@ -80,16 +82,29 @@ export const useRoomsStore = defineStore('rooms', () => {
         .select()
         .single()
       
-      if (createError) throw createError
+      if (createError) {
+        console.error('❌ Error creating room:', createError)
+        throw createError
+      }
+      
+      console.log('✅ Room created:', data.id)
       
       // Join the created room
       const joinResult = await joinRoom(data.id)
-      if (joinResult.error) throw new Error(joinResult.error)
+      if (joinResult.error) {
+        console.error('❌ Error joining created room:', joinResult.error)
+        throw new Error(joinResult.error)
+      }
       
+      console.log('✅ Successfully joined created room')
+      
+      // Refresh room list to show updated data
       await fetchRooms()
+      
       return { data, error: null }
       
     } catch (err: any) {
+      console.error('❌ Create room failed:', err)
       error.value = err.message
       return { data: null, error: err.message }
     } finally {
@@ -194,6 +209,8 @@ export const useRoomsStore = defineStore('rooms', () => {
     error.value = ''
     
     try {
+      console.log('🔍 Loading room:', roomId)
+      
       // Load room details
       const { data: room, error: roomError } = await supabase
         .from('rooms')
@@ -201,8 +218,13 @@ export const useRoomsStore = defineStore('rooms', () => {
         .eq('id', roomId)
         .single()
       
-      if (roomError) throw roomError
+      if (roomError) {
+        console.error('❌ Error loading room:', roomError)
+        throw roomError
+      }
+      
       currentRoom.value = room
+      console.log('✅ Room loaded:', room.name)
       
       // Load room players with user details
       const { data: players, error: playersError } = await supabase
@@ -216,15 +238,29 @@ export const useRoomsStore = defineStore('rooms', () => {
         .eq('room_id', roomId)
         .order('player_order')
       
-      if (playersError) throw playersError
+      if (playersError) {
+        console.error('❌ Error loading players:', playersError)
+        throw playersError
+      }
+      
       roomPlayers.value = players || []
+      console.log('✅ Players loaded:', players?.length || 0, 'players')
+      console.log('👥 Players:', players?.map(p => ({ order: p.player_order, email: p.user?.email })))
+      
+      // Check if current user is in the room
+      const currentUserInRoom = players?.find(p => p.player_id === authStore.user?.id)
+      if (currentUserInRoom) {
+        console.log('✅ Current user found in room:', currentUserInRoom.player_order)
+      } else {
+        console.log('⚠️ Current user not found in room players')
+      }
       
       // Start room subscription
       subscribeToRoom(roomId)
       
     } catch (err: any) {
+      console.error('❌ Error loading room:', err)
       error.value = err.message
-      console.error('Error loading room:', err)
     } finally {
       loading.value = false
     }
@@ -272,16 +308,30 @@ export const useRoomsStore = defineStore('rooms', () => {
 
   // Realtime subscriptions
   const subscribeToRooms = () => {
+    console.log('🔔 Subscribing to rooms updates...')
+    
     roomsChannel = supabase
       .channel('public:rooms')
       .on('postgres_changes', { 
         event: '*', 
         schema: 'public', 
         table: 'rooms' 
-      }, () => {
+      }, (payload) => {
+        console.log('🔔 Rooms table change:', payload.eventType, payload.new || payload.old)
         fetchRooms()
       })
-      .subscribe()
+      .on('postgres_changes', { 
+        event: '*', 
+        schema: 'public', 
+        table: 'room_players' 
+      }, (payload) => {
+        console.log('🔔 Room players change:', payload.eventType, payload.new || payload.old)
+        // Refresh rooms to update current_players count
+        fetchRooms()
+      })
+      .subscribe((status) => {
+        console.log('🔔 Rooms subscription status:', status)
+      })
   }
 
   const subscribeToRoom = (roomId: string) => {
