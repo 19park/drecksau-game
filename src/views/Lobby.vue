@@ -213,6 +213,7 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { storeToRefs } from 'pinia'
 import { useRouter } from 'vue-router'
 import { useRoomsStore } from '@/stores/rooms'
 import { useAuthStore } from '@/stores/auth'
@@ -229,13 +230,17 @@ const newRoom = ref({
   isExpansion: false
 })
 
-// Computed
+// Computed - use storeToRefs for reactive properties
 const { 
   rooms, 
   availableRooms, 
   myRooms, 
   loading, 
-  error,
+  error
+} = storeToRefs(roomsStore)
+
+// Actions can be destructured directly
+const {
   fetchRooms,
   createRoom,
   joinRoom: joinRoomAction
