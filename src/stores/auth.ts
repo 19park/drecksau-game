@@ -100,11 +100,17 @@ export const useAuthStore = defineStore('auth', () => {
     
     try {
       const url = new URL(window.location.href)
+      
+      // Check for magic link params in query string
       const token_hash = url.searchParams.get('token_hash')
       const type = url.searchParams.get('type')
-      const access_token = url.searchParams.get('access_token')
       
-      console.log('🔍 Callback params:', { token_hash: !!token_hash, type, access_token: !!access_token })
+      console.log('🔍 Callback URL:', window.location.href)
+      console.log('🔍 Callback params:', { 
+        token_hash: !!token_hash, 
+        type, 
+        hasHash: !!url.hash
+      })
       
       // Handle Magic Link callback (token_hash + type)
       if (token_hash && type) {
@@ -126,7 +132,13 @@ export const useAuthStore = defineStore('auth', () => {
         }
       }
       
-      // Handle OAuth callback (access_token + refresh_token) or check existing session
+      // For OAuth callback, Supabase automatically processes URL fragments
+      // when detectSessionInUrl is true, so just get current session
+      console.log('🔗 Getting current session after OAuth callback')
+      
+      // Add a small delay to allow Supabase to process the URL fragments
+      await new Promise(resolve => setTimeout(resolve, 100))
+      
       const { data: sessionData, error: sessionError } = await supabase.auth.getSession()
       
       if (sessionError) {
@@ -136,7 +148,7 @@ export const useAuthStore = defineStore('auth', () => {
       
       if (sessionData.session) {
         user.value = sessionData.session.user
-        console.log('✅ OAuth authentication successful:', sessionData.session.user.email)
+        console.log('✅ Authentication successful:', sessionData.session.user.email)
         return { error: null, user: sessionData.session.user }
       }
       
