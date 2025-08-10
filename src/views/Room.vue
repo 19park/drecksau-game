@@ -333,6 +333,32 @@ const startGame = async () => {
   }
 }
 
+// Handle page unload for room
+const handleBeforeUnloadRoom = (event: BeforeUnloadEvent): string | undefined => {
+  // Show confirmation if user is the room creator and game hasn't started
+  if (isRoomCreator.value && roomsStore.currentRoom?.status === 'waiting' && roomsStore.roomPlayers.length > 1) {
+    event.preventDefault()
+    const message = '당신이 방장입니다. 나가면 다른 플레이어들이 방에서 나가게 됩니다. 정말로 나가시겠습니까?'
+    // Modern way to show confirmation dialog
+    event.returnValue = message
+    return message
+  }
+  return undefined
+}
+
+const handleUnloadRoom = () => {
+  // Optionally leave the room when closing
+  if (roomsStore.currentRoom && roomsStore.currentPlayer) {
+    try {
+      console.log('🚪 Auto-leaving room due to page unload')
+      // Don't wait for the result as the page is closing
+      roomsStore.leaveRoom()
+    } catch (err) {
+      console.error('Error leaving room during unload:', err)
+    }
+  }
+}
+
 // Lifecycle
 onMounted(async () => {
   if (roomId) {
@@ -347,12 +373,20 @@ onMounted(async () => {
       isRoomCreator: isRoomCreator.value,
       canStartGame: canStartGame.value
     })
+    
+    // Add page unload event listeners
+    window.addEventListener('beforeunload', handleBeforeUnloadRoom)
+    window.addEventListener('unload', handleUnloadRoom)
   } else {
     router.push('/lobby')
   }
 })
 
 onUnmounted(() => {
+  // Remove event listeners
+  window.removeEventListener('beforeunload', handleBeforeUnloadRoom)
+  window.removeEventListener('unload', handleUnloadRoom)
+  
   roomsStore.stopRoomSubscription()
 })
 </script>

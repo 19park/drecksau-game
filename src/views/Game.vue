@@ -77,10 +77,10 @@
           <h3 class="text-sm font-bold mb-2">🐛 게임 디버그 정보</h3>
           <div class="text-xs space-y-2">
             <div>
-              <strong>내 돼지:</strong> {{ gameStore.myPigs.map(p => `${p.pig_state}(${p.id.slice(0, 4)})`).join(', ') }}
+              <strong>내 돼지:</strong> {{ gameStore.myPigs.map(p => `${p.pig_state}${p.has_barn?'🏠':''}${p.has_lightning_rod?'⚡':''}${p.barn_locked?'🔒':''}(${p.id.slice(0, 4)})`).join(', ') }}
             </div>
             <div>
-              <strong>상대 돼지:</strong> {{ gameStore.otherPlayersPigs.map(p => `${p.pig_state}${p.has_barn?'🏠':''}${p.barn_locked?'🔒':''}(${p.player_id.slice(0, 4)}-${p.id.slice(0, 4)})`).join(', ') }}
+              <strong>상대 돼지:</strong> {{ gameStore.otherPlayersPigs.map(p => `${p.pig_state}${p.has_barn?'🏠':''}${p.has_lightning_rod?'⚡':''}${p.barn_locked?'🔒':''}(${p.player_id.slice(0, 4)}-${p.id.slice(0, 4)})`).join(', ') }}
             </div>
             <div>
               <strong>목욕가능 상대돼지:</strong> {{ gameStore.otherPlayersPigs.filter(p => p.pig_state === 'dirty' && (!p.has_barn || !p.barn_locked)).length }}마리
@@ -96,6 +96,15 @@
             </div>
             <div>
               <strong>내 손패:</strong> {{ gameStore.myHand.map(h => `${h.card_type}(${h.card_count})`).join(', ') }}
+            </div>
+            <div>
+              <strong>카드 사용 가능:</strong> {{ gameStore.myHand.filter(h => h.card_count > 0).map(h => `${h.card_type}: ${gameStore.canPlayCard(h.card_type) ? '✅' : '❌'}`).join(', ') }}
+            </div>
+            <div v-if="gameStore.myHand.some(h => h.card_type === 'barn_lock' && h.card_count > 0)">
+              <strong>헛간잠금카드 조건:</strong> 내 더러운 돼지 + 헛간 + 미잠금: {{ gameStore.myPigs.filter(p => p.has_barn && p.pig_state === 'dirty' && !p.barn_locked).length }}마리
+            </div>
+            <div v-if="gameStore.myHand.some(h => h.card_type === 'lightning_rod' && h.card_count > 0)">
+              <strong>피뢰침카드 조건:</strong> 내 헛간 돼지 + 피뢰침 없음: {{ gameStore.myPigs.filter(p => p.has_barn && !p.has_lightning_rod).length }}마리
             </div>
           </div>
         </div>
@@ -202,13 +211,34 @@
               <h3 class="font-semibold mb-3">게임 액션</h3>
               
               <div class="space-y-2">
+                <!-- Single Card Discard - Primary action when no playable cards -->
                 <button 
-                  v-if="gameStore.isMyTurn && !gameStore.isGameFinished"
+                  v-if="gameStore.isMyTurn && !gameStore.isGameFinished && !hasAnyPlayableCard"
+                  @click="showDiscardSelector = true" 
+                  class="w-full btn-warning animate-pulse text-sm py-2"
+                  :disabled="!canDiscardAll || gameStore.turnInProgress || gameStore.cardExecutionInProgress"
+                >
+                  ⚠️ 사용 불가! 카드 1장 버리기
+                </button>
+                
+                <!-- Regular Single Card Discard -->
+                <button 
+                  v-if="gameStore.isMyTurn && !gameStore.isGameFinished && hasAnyPlayableCard"
+                  @click="showDiscardSelector = true" 
+                  class="w-full btn-secondary text-sm py-2"
+                  :disabled="!canDiscardAll || gameStore.turnInProgress || gameStore.cardExecutionInProgress"
+                >
+                  🗂️ 카드 1장 버리기
+                </button>
+                
+                <!-- Discard All Cards - Only as fallback option -->
+                <button 
+                  v-if="gameStore.isMyTurn && !gameStore.isGameFinished && !hasAnyPlayableCard"
                   @click="handleDiscardAllCards" 
                   class="w-full btn-secondary text-sm py-2"
                   :disabled="!canDiscardAll || gameStore.turnInProgress || gameStore.cardExecutionInProgress"
                 >
-                  🗑️ 모든 카드 버리기
+                  🗑️ 모든 카드 버리기 (대안)
                 </button>
                 
                 <button 
@@ -262,7 +292,7 @@
             <h4 class="font-semibold mb-3 text-center">내 손패</h4>
             <div class="flex justify-center gap-3 flex-wrap">
               <GameCard
-                v-for="card in gameStore.myHand" 
+                v-for="card in gameStore.myHand.filter(c => c.card_count > 0)" 
                 :key="card.card_type"
                 :card-type="card.card_type"
                 :count="card.card_count"
@@ -273,7 +303,7 @@
                 @click="(cardType) => console.log('Selected card:', cardType)"
               />
               
-              <div v-if="gameStore.myHand.length === 0" class="text-gray-500 text-center py-8">
+              <div v-if="gameStore.myHand.filter(c => c.card_count > 0).length === 0" class="text-gray-500 text-center py-8">
                 손패가 비어있습니다
               </div>
             </div>
@@ -331,6 +361,15 @@
       :targets="availableTargets"
       @select="selectTarget"
       @cancel="closeTargetSelector"
+    />
+
+    <!-- Card Discard Selector Modal -->
+    <CardDiscardSelector
+      v-if="showDiscardSelector"
+      :show="showDiscardSelector"
+      :available-cards="gameStore.myHand.filter(c => c.card_count > 0)"
+      @select="handleDiscardCard"
+      @cancel="closeDiscardSelector"
     />
 
     <!-- Game Finished Modal - Winner -->
@@ -405,6 +444,7 @@ import { useGameLogic } from '@/composables/useGameLogic'
 import GameCard from '@/components/GameCard.vue'
 import PigCard from '@/components/PigCard.vue'
 import TargetSelector from '@/components/TargetSelector.vue'
+import CardDiscardSelector from '@/components/CardDiscardSelector.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -426,6 +466,7 @@ const {
 // Reactive state
 const showGameMenu = ref(false)
 const showRules = ref(false)
+const showDiscardSelector = ref(false)
 
 // Props
 const roomId = route.params.id as string
@@ -440,7 +481,11 @@ const otherPlayers = computed(() =>
   roomsStore.roomPlayers.filter(p => p.player_id !== user.value?.id)
 )
 
-const canDiscardAll = computed(() => gameStore.myHand.length > 0)
+const canDiscardAll = computed(() => gameStore.myHand.some(card => card.card_count > 0))
+
+const hasAnyPlayableCard = computed(() => 
+  gameStore.myHand.some(card => card.card_count > 0 && gameStore.canPlayCard(card.card_type))
+)
 
 const myPlayerOrder = computed(() => {
   const myPlayer = roomsStore.roomPlayers.find(p => p.player_id === user.value?.id)
@@ -485,10 +530,25 @@ const handleEndTurn = async () => {
   await gameStore.endTurn()
 }
 
-const handleDrawCard = async () => {
+const handleDiscardCard = async (cardType: string) => {
   if (!gameStore.isMyTurn || gameStore.turnInProgress) return
-  await gameStore.drawCard()
+  
+  try {
+    const result = await gameStore.discardCard(cardType as any)
+    if (result.error) {
+      console.error('Failed to discard card:', result.error)
+    }
+  } catch (error) {
+    console.error('Error discarding card:', error)
+  } finally {
+    showDiscardSelector.value = false
+  }
 }
+
+const closeDiscardSelector = () => {
+  showDiscardSelector.value = false
+}
+
 
 const retryConnection = async () => {
   if (roomId) {
@@ -502,6 +562,39 @@ const confirmLeaveGame = () => {
   }
 }
 
+// Handle page unload events
+const handleBeforeUnload = (event: BeforeUnloadEvent): string | undefined => {
+  // For critical game states, show confirmation dialog
+  if (gameStore.isMyTurn && !gameStore.isGameFinished && gameStore.turnInProgress) {
+    event.preventDefault()
+    const message = '게임이 진행 중입니다. 정말로 나가시겠습니까?'
+    event.returnValue = message
+    return message
+  }
+  return undefined
+}
+
+const handleUnload = () => {
+  // Perform cleanup when page is actually unloading
+  try {
+    gameStore.safeCleanupOnLeave()
+  } catch (err) {
+    console.error('Error during page unload cleanup:', err)
+  }
+}
+
+const handleVisibilityChange = () => {
+  if (document.hidden) {
+    console.log('🙈 Page hidden, user might be switching tabs')
+  } else {
+    console.log('👁️ Page visible again, reconnecting if needed')
+    // Optionally refresh connection when user returns
+    if (gameStore.gameState && !gameStore.isConnected) {
+      gameStore.subscribeToGame(roomId)
+    }
+  }
+}
+
 // Lifecycle
 onMounted(async () => {
   if (roomId) {
@@ -510,10 +603,21 @@ onMounted(async () => {
   } else {
     router.push('/lobby')
   }
+  
+  // Add page unload event listeners
+  window.addEventListener('beforeunload', handleBeforeUnload)
+  window.addEventListener('unload', handleUnload)
+  document.addEventListener('visibilitychange', handleVisibilityChange)
 })
 
-onUnmounted(() => {
-  gameStore.cleanup()
+onUnmounted(async () => {
+  // Remove event listeners
+  window.removeEventListener('beforeunload', handleBeforeUnload)
+  window.removeEventListener('unload', handleUnload)
+  document.removeEventListener('visibilitychange', handleVisibilityChange)
+  
+  // Perform safe cleanup
+  await gameStore.safeCleanupOnLeave()
   roomsStore.stopRoomSubscription()
 })
 </script>

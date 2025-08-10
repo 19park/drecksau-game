@@ -216,8 +216,16 @@ export const useGameStore = defineStore('game', () => {
 
   // Actions
   const loadGame = async (roomId: string) => {
+    // Prevent concurrent loadGame calls
+    if (loading.value) {
+      console.log('⚠️ loadGame already in progress, skipping')
+      return
+    }
+    
     loading.value = true
     error.value = ''
+    
+    console.log('🔄 Loading game for room:', roomId)
     
     try {
       // Load game state
@@ -277,8 +285,28 @@ export const useGameStore = defineStore('game', () => {
         .eq('player_id', authStore.user?.id)
       
       if (handsError) throw handsError
+      
+      // Clear existing hands first to prevent duplicates on refresh
+      playerHands.value = []
       playerHands.value = handsData || []
-      console.log('🃏 Loaded player hands:', playerHands.value.length, playerHands.value)
+      
+      console.log('🃏 Loaded player hands:', playerHands.value.length)
+      console.log('📋 Hand details:', playerHands.value.map(h => ({
+        id: h.id?.slice(0, 8),
+        card_type: h.card_type,
+        card_count: h.card_count
+      })))
+      
+      // Check for potential duplicates in database
+      const duplicateCheck = handsData?.reduce((acc: any, hand: any) => {
+        acc[hand.card_type] = (acc[hand.card_type] || 0) + 1
+        return acc
+      }, {})
+      
+      const duplicates = Object.entries(duplicateCheck || {}).filter(([_, count]) => (count as number) > 1)
+      if (duplicates.length > 0) {
+        console.warn('⚠️ Duplicate cards detected in database:', duplicates)
+      }
       
       // Load deck state
       const { data: deckData, error: deckError } = await supabase
@@ -730,51 +758,30 @@ export const useGameStore = defineStore('game', () => {
   const drawCard = async () => {
     if (!gameState.value || !authStore.user) return
     
+    console.log('🃏 Drawing card from deck...')
+    
     const { data, error } = await supabase.rpc('draw_card', {
       room_id_param: gameState.value.room_id,
       player_id_param: authStore.user.id
     })
     
     if (error) throw error
-    return data
-  }
-
-  const discardCard = async (cardType: CardType) => {
-    if (!isMyTurn.value) return { error: 'Not your turn' }
     
-    // Set turn in progress
-    turnInProgress.value = true
+    // Immediately refresh player hand to show the new card
+    const { data: handsData, error: handsError } = await supabase
+      .from('player_hands')
+      .select('*')
+      .eq('room_id', gameState.value.room_id)
+      .eq('player_id', authStore.user.id)
     
-    try {
-      // Remove card from hand
-      await removeCardFromHand(cardType)
-      
-      // Add to discard pile
-      const { error } = await supabase
-        .from('discarded_cards')
-        .upsert({
-          room_id: gameState.value!.room_id,
-          card_type: cardType,
-          discarded_count: 1
-        }, {
-          onConflict: 'room_id,card_type',
-          ignoreDuplicates: false
-        })
-      
-      if (error) throw error
-      
-      // Draw new card
-      await drawCard()
-      
-      // End turn
-      await endTurn()
-      
-      return { error: null }
-      
-    } catch (err: any) {
-      turnInProgress.value = false
-      return { error: err.message }
+    if (handsError) {
+      console.error('❌ Error refreshing hand after draw:', handsError)
+    } else {
+      playerHands.value = handsData || []
+      console.log('✅ Hand refreshed after drawing card, new count:', playerHands.value.length)
     }
+    
+    return data
   }
 
   const discardAllCards = async () => {
@@ -806,6 +813,83 @@ export const useGameStore = defineStore('game', () => {
       return { error: null }
       
     } catch (err: any) {
+      turnInProgress.value = false
+      return { error: err.message }
+    }
+  }
+
+  // Helper function to get card display name
+  const getCardDisplayName = (cardType: CardType): string => {
+    const cardNames = {
+      'mud': '진흙카드',
+      'rain': '비카드', 
+      'lightning': '벼락카드',
+      'lightning_rod': '피뢰침카드',
+      'barn': '헛간카드',
+      'barn_lock': '헛간잠금카드',
+      'bath': '목욕카드',
+      'beautiful_pig': '아름다운돼지카드',
+      'escape': '탈출카드',
+      'lucky_bird': '행운의새카드'
+    }
+    return cardNames[cardType] || cardType
+  }
+
+  const discardCard = async (cardType: CardType) => {
+    if (!isMyTurn.value) {
+      return { error: 'Not your turn' }
+    }
+    
+    const handCard = myHand.value.find(h => h.card_type === cardType)
+    if (!handCard || handCard.card_count <= 0) {
+      return { error: 'Card not available in hand' }
+    }
+    
+    // Set turn in progress
+    turnInProgress.value = true
+    
+    try {
+      console.log('🗑️ Discarding single card:', cardType, 'current count:', handCard.card_count)
+      
+      const originalCount = handCard.card_count
+      const newCount = originalCount - 1
+      
+      // Update database first with the correct new count
+      const { error: updateError } = await supabase
+        .from('player_hands')
+        .update({ 
+          card_count: newCount,
+          updated_at: new Date().toISOString()
+        })
+        .eq('room_id', gameState.value!.room_id)
+        .eq('player_id', authStore.user!.id)
+        .eq('card_type', cardType)
+      
+      if (updateError) {
+        throw updateError
+      }
+      
+      // Update local state only after database success
+      handCard.card_count = newCount
+      
+      // Draw 1 new card to maintain hand size
+      await drawCard()
+      
+      // End turn (this completes the action, no additional card draw)
+      await endTurnWithoutDraw()
+      
+      // Show visual feedback
+      showCardEffect.value = true
+      lastAction.value = `카드 1장 버림: ${getCardDisplayName(cardType)}`
+      setTimeout(() => {
+        showCardEffect.value = false
+      }, 3000)
+      
+      console.log('✅ Single card discarded successfully:', cardType, 'new count:', newCount)
+      return { error: null }
+      
+    } catch (err: any) {
+      console.error('❌ Error discarding single card:', err)
       turnInProgress.value = false
       return { error: err.message }
     }
@@ -1023,19 +1107,28 @@ export const useGameStore = defineStore('game', () => {
   }
 
   const handlePlayerHandsUpdate = async (payload: any) => {
-    console.log('🃏 Player hands update:', payload)
+    console.log('🃏 Player hands update:', payload.eventType, {
+      new_id: payload.new?.id?.slice(0, 8),
+      new_player_id: payload.new?.player_id?.slice(0, 8),
+      new_card_type: payload.new?.card_type,
+      new_card_count: payload.new?.card_count,
+      old_id: payload.old?.id?.slice(0, 8)
+    })
     
     // Only update our own hand for security
-    if (payload.new?.player_id !== authStore.user?.id) return
+    if (payload.new?.player_id !== authStore.user?.id && payload.old?.player_id !== authStore.user?.id) return
     
     if (payload.eventType === 'INSERT' && payload.new) {
-      const existingIndex = playerHands.value.findIndex(hand => 
-        hand.player_id === payload.new.player_id && hand.card_type === payload.new.card_type
-      )
-      if (existingIndex === -1) {
+      // Check for existing entry by ID first (most reliable)
+      const existingByIdIndex = playerHands.value.findIndex(hand => hand.id === payload.new.id)
+      
+      if (existingByIdIndex === -1) {
         playerHands.value.push(payload.new)
+        console.log('✅ Added new hand card to local state:', payload.new.card_type)
       } else {
-        playerHands.value[existingIndex] = payload.new
+        // Update existing entry
+        playerHands.value[existingByIdIndex] = payload.new
+        console.log('🔄 Updated existing hand card in local state:', payload.new.card_type)
       }
     } else if (payload.eventType === 'UPDATE' && payload.new) {
       const index = playerHands.value.findIndex(hand => 
@@ -1043,6 +1136,9 @@ export const useGameStore = defineStore('game', () => {
       )
       if (index !== -1) {
         playerHands.value[index] = payload.new
+        console.log('🔄 Updated hand card in local state:', payload.new.card_type)
+      } else {
+        console.warn('⚠️ Could not find hand card to update:', payload.new.id)
       }
     } else if (payload.eventType === 'DELETE' && payload.old) {
       const index = playerHands.value.findIndex(hand => 
@@ -1144,15 +1240,11 @@ export const useGameStore = defineStore('game', () => {
   const handleGameFinishedBroadcast = async (payload: any) => {
     console.log('📡 Game finished broadcast received:', payload)
     
-    const { winner_player_id, winner_name, win_condition } = payload.payload
+    const { winner_player_id, winner_name } = payload.payload
     
     // Only show victory modal to other players (winner already sees it)
     if (winner_player_id !== authStore.user?.id) {
       console.log('🏆 Another player won! Setting up victory modal for winner:', winner_name)
-      
-      // Set game state to show defeat modal or winner announcement
-      hasWon.value = false // This player didn't win
-      winConditionType.value = win_condition
       
       // Update local game state
       if (gameState.value) {
@@ -1288,6 +1380,35 @@ export const useGameStore = defineStore('game', () => {
     stopGameStatePolling()
   }
 
+  // Safe cleanup when user leaves the game
+  const safeCleanupOnLeave = async () => {
+    if (!gameState.value || !authStore.user) return
+
+    try {
+      console.log('🧹 Safe cleanup initiated for user leaving game')
+      
+      // If game is in progress and it's my turn, end turn first
+      if (gameState.value.game_phase === 'playing' && isMyTurn.value && turnInProgress.value) {
+        console.log('⏭️ Auto-ending turn as user is leaving')
+        try {
+          await endTurn()
+        } catch (err) {
+          console.warn('Could not end turn during cleanup:', err)
+        }
+      }
+
+      // Mark player as inactive/disconnected but don't remove from game
+      // This allows them to reconnect later
+      console.log('🔄 Marking player as temporarily disconnected')
+      
+    } catch (err) {
+      console.error('❌ Error during safe cleanup:', err)
+    } finally {
+      // Always clean up local state
+      cleanup()
+    }
+  }
+
   // Cleanup
   const cleanup = () => {
     gameState.value = null
@@ -1347,6 +1468,7 @@ export const useGameStore = defineStore('game', () => {
     endTurn,
     subscribeToGame,
     stopGameSubscription,
+    safeCleanupOnLeave,
     cleanup
   }
 })

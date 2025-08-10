@@ -23,6 +23,10 @@
     @apply bg-secondary-500 hover:bg-secondary-600 text-white font-semibold py-3 px-6 rounded-xl shadow-game transition-all duration-200 transform hover:scale-105 active:scale-95;
   }
   
+  .btn-warning {
+    @apply bg-yellow-500 hover:bg-yellow-600 text-white font-semibold py-3 px-6 rounded-xl shadow-game transition-all duration-200 transform hover:scale-105 active:scale-95;
+  }
+  
   .btn-mud {
     @apply bg-mud-500 hover:bg-mud-600 text-white font-semibold py-3 px-6 rounded-xl shadow-game transition-all duration-200 transform hover:scale-105 active:scale-95;
   }
