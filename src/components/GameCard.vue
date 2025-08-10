@@ -93,6 +93,7 @@ const { getCardEmoji, getCardName, getCardDescription } = useGameLogic()
 
 // State
 const showTooltip = ref(false)
+const isClicking = ref(false)
 
 // Computed
 const cardEmoji = computed(() => getCardEmoji(props.cardType))
@@ -115,9 +116,15 @@ const cardClasses = computed(() => {
   ]
 })
 
-// Methods
-const handleClick = () => {
-  if (props.disabled) return
+// Methods  
+const handleClick = async () => {
+  if (props.disabled || isClicking.value) return
+  
+  // Prevent rapid clicking
+  isClicking.value = true
+  setTimeout(() => {
+    isClicking.value = false
+  }, 500) // 500ms debounce
   
   emit('click', props.cardType)
   

@@ -109,12 +109,33 @@ export function useGameLogic() {
 
   // Card play flow
   const initiateCardPlay = async (cardType: CardType) => {
-    if (!gameStore.canPlayCard(cardType) || !gameStore.isMyTurn) {
+    console.log('🎮 initiateCardPlay called:', cardType)
+    console.log('🎮 Game state check:', {
+      canPlayCard: gameStore.canPlayCard(cardType),
+      isMyTurn: gameStore.isMyTurn,
+      turnInProgress: gameStore.turnInProgress,
+      cardExecutionInProgress: gameStore.cardExecutionInProgress,
+      myPigs: gameStore.myPigs.length,
+      otherPigs: gameStore.otherPlayersPigs.length
+    })
+    
+    if (!gameStore.canPlayCard(cardType) || !gameStore.isMyTurn || gameStore.turnInProgress) {
+      console.log('🚫 initiateCardPlay blocked:', { 
+        canPlayCard: gameStore.canPlayCard(cardType), 
+        isMyTurn: gameStore.isMyTurn, 
+        turnInProgress: gameStore.turnInProgress,
+        cardType 
+      })
       return
     }
+    
+    console.log('✅ initiateCardPlay allowed:', cardType)
 
     // Check if card needs a target
     if (needsTarget(cardType)) {
+      // Set turn in progress to prevent other actions
+      gameStore.turnInProgress = true
+      
       // Show target selector
       pendingCardPlay.value = cardType
       availableTargets.value = getValidTargets(cardType)
@@ -129,11 +150,40 @@ export function useGameLogic() {
     }
   }
 
+  // Add selection guard
+  const isTargetSelectionInProgress = ref(false)
+  
   const selectTarget = async (target: PlayerPig) => {
-    if (!pendingCardPlay.value) return
+    if (!pendingCardPlay.value || isTargetSelectionInProgress.value) {
+      console.log('🚫 Target selection blocked:', { 
+        hasPendingCard: !!pendingCardPlay.value, 
+        selectionInProgress: isTargetSelectionInProgress.value 
+      })
+      return
+    }
     
-    await executeCardPlay(pendingCardPlay.value, target)
-    closeTargetSelector()
+    // Set selection in progress immediately
+    isTargetSelectionInProgress.value = true
+    
+    console.log('🎯 Target selected:', target.id)
+    
+    // Store the card to play and close selector immediately
+    const cardToPlay = pendingCardPlay.value
+    
+    // Force close target selector immediately - clear all states
+    showTargetSelector.value = false
+    availableTargets.value = []
+    pendingCardPlay.value = null
+    
+    console.log('🔒 Force closing target selector for target:', target.id)
+    
+    try {
+      // Execute the card play
+      await executeCardPlay(cardToPlay, target)
+    } finally {
+      // Always reset selection guard
+      isTargetSelectionInProgress.value = false
+    }
   }
 
   const executeCardPlay = async (cardType: CardType, target?: PlayerPig) => {
@@ -145,10 +195,18 @@ export function useGameLogic() {
     }
   }
 
-  const closeTargetSelector = () => {
+  const closeTargetSelector = (resetTurnInProgress = true) => {
+    console.log('🔒 Closing target selector, resetTurn:', resetTurnInProgress)
+    
     showTargetSelector.value = false
     availableTargets.value = []
     pendingCardPlay.value = null
+    isTargetSelectionInProgress.value = false // Always reset selection guard
+    
+    // Reset turn in progress only if we're canceling (not completing) target selection
+    if (resetTurnInProgress && gameStore.turnInProgress) {
+      gameStore.turnInProgress = false
+    }
   }
 
   // Game state helpers
@@ -244,6 +302,7 @@ export function useGameLogic() {
     showTargetSelector,
     availableTargets,
     pendingCardPlay,
+    isTargetSelectionInProgress,
     
     // Card helpers
     getCardInfo,

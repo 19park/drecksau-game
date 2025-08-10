@@ -29,7 +29,7 @@
       </div>
       
       <!-- Target Grid -->
-      <div class="p-6">
+      <div class="p-6" :class="{ 'pointer-events-none opacity-50': isSelecting }">
         <div v-if="targets.length === 0" class="text-center py-8">
           <div class="text-6xl mb-4">🚫</div>
           <h3 class="text-lg font-semibold text-gray-700 mb-2">사용 가능한 대상이 없습니다</h3>
@@ -73,6 +73,7 @@
                     :pig="pig"
                     :targetable="true"
                     :show-info="true"
+                    :disabled="isSelecting"
                     @click="selectTarget(pig)"
                   />
                   
@@ -80,8 +81,10 @@
                   <button 
                     @click="selectTarget(pig)"
                     class="absolute -bottom-2 left-1/2 transform -translate-x-1/2 bg-primary-500 hover:bg-primary-600 text-white text-xs px-3 py-1 rounded-full transition-colors shadow-md"
+                    :disabled="isSelecting"
+                    :class="{ 'opacity-50 cursor-not-allowed': isSelecting }"
                   >
-                    선택
+                    {{ isSelecting ? '선택중...' : '선택' }}
                   </button>
                 </div>
               </div>
@@ -104,7 +107,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { useGameLogic } from '@/composables/useGameLogic'
 import { useAuthStore } from '@/stores/auth'
 import PigCard from './PigCard.vue'
@@ -130,7 +133,8 @@ const {
   getCardEmoji, 
   getCardName, 
   getCardDescription,
-  getPlayerName 
+  getPlayerName,
+  getPlayerOrder
 } = useGameLogic()
 
 const authStore = useAuthStore()
@@ -162,7 +166,7 @@ const groupedTargets = computed(() => {
       groups.set(pig.player_id, {
         playerId: pig.player_id,
         playerName: getPlayerName(pig.player_id),
-        playerOrder: getPlayerOrder(),
+        playerOrder: getPlayerOrder(pig.player_id),
         isCurrentUser: pig.player_id === authStore.user?.id,
         pigs: []
       })
@@ -185,16 +189,34 @@ const getPlayerEmoji = (order: number) => {
   return emojis[order - 1] || '👤'
 }
 
-const getPlayerOrder = (): number => {
-  // TODO: Get from actual player data - for now return 1 as default
-  return 1
-}
+
+// Selection state
+const isSelecting = ref(false)
 
 const selectTarget = (pig: PlayerPig) => {
+  if (isSelecting.value) {
+    console.log('🚫 Target selection blocked - already selecting')
+    return
+  }
+  
+  console.log('🎯 Selecting target:', pig.id)
+  isSelecting.value = true
+  
+  // Emit selection
   emit('select', pig)
+  
+  // DO NOT reset isSelecting here - let the parent handle it
+  // The component should stay disabled until it's closed
 }
 
 const handleBackdropClick = () => {
   emit('cancel')
 }
+
+// Reset selection state when modal closes
+watch(() => props.show, (newShow) => {
+  if (!newShow) {
+    isSelecting.value = false
+  }
+})
 </script>

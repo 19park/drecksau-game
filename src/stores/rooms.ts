@@ -34,12 +34,22 @@ export const useRoomsStore = defineStore('rooms', () => {
     roomPlayers.value.find(player => player.player_id === authStore.user?.id)
   )
 
-  const canStartGame = computed(() =>
-    isRoomCreator.value && 
-    roomPlayers.value.length >= 2 && 
-    roomPlayers.value.every(player => player.is_ready) &&
-    currentRoom.value?.status === 'waiting'
-  )
+  const canStartGame = computed(() => {
+    const result = isRoomCreator.value && 
+      roomPlayers.value.length >= 2 && 
+      roomPlayers.value.every(player => player.is_ready) &&
+      currentRoom.value?.status === 'waiting'
+    
+    console.log('🎮 canStartGame computed:', {
+      isRoomCreator: isRoomCreator.value,
+      playerCount: roomPlayers.value.length,
+      allReady: roomPlayers.value.every(player => player.is_ready),
+      roomStatus: currentRoom.value?.status,
+      result
+    })
+    
+    return result
+  })
 
   // Actions
   const fetchRooms = async () => {
@@ -238,12 +248,12 @@ export const useRoomsStore = defineStore('rooms', () => {
       currentRoom.value = room
       console.log('✅ Room loaded:', room.name)
       
-      // Load room players with user details
+      // Load room players with user details - use LEFT JOIN to ensure all players show
       const { data: players, error: playersError } = await supabase
         .from('room_players')
         .select(`
           *,
-          profile:player_id (
+          profile:player_id!left (
             email
           )
         `)
@@ -257,18 +267,51 @@ export const useRoomsStore = defineStore('rooms', () => {
       
       roomPlayers.value = players || []
       console.log('✅ Players loaded:', players?.length || 0, 'players')
-      console.log('👥 Players:', players?.map(p => ({ order: p.player_order, email: p.profile?.email })))
+      console.log('👥 Players detailed:', players?.map(p => ({ 
+        order: p.player_order, 
+        player_id: p.player_id?.slice(0, 8),
+        email: p.profile?.email,
+        is_ready: p.is_ready,
+        has_profile: !!p.profile
+      })))
       
       // Check if current user is in the room
       const currentUserInRoom = players?.find(p => p.player_id === authStore.user?.id)
       if (currentUserInRoom) {
-        console.log('✅ Current user found in room:', currentUserInRoom.player_order)
+        console.log('✅ Current user found in room:', {
+          order: currentUserInRoom.player_order,
+          is_ready: currentUserInRoom.is_ready,
+          has_profile: !!currentUserInRoom.profile
+        })
       } else {
         console.log('⚠️ Current user not found in room players')
       }
       
+      // Log canStartGame status
+      console.log('🎮 Game start check:', {
+        isRoomCreator: currentRoom.value?.creator_id === authStore.user?.id,
+        playerCount: players?.length,
+        minPlayers: 2,
+        allReady: players?.every(p => p.is_ready),
+        roomStatus: currentRoom.value?.status,
+        canStart: isRoomCreator.value && 
+                   (players?.length || 0) >= 2 && 
+                   players?.every(player => player.is_ready) &&
+                   currentRoom.value?.status === 'waiting'
+      })
+      
       // Start room subscription
       subscribeToRoom(roomId)
+      
+      // Wait a moment for Vue reactivity to propagate
+      await new Promise(resolve => setTimeout(resolve, 100))
+      
+      // Log final computed state
+      console.log('🔍 Final computed state after loadRoom:', {
+        isRoomCreator: isRoomCreator.value,
+        canStartGame: canStartGame.value,
+        currentPlayerExists: !!currentPlayer.value
+      })
       
     } catch (err: any) {
       console.error('❌ Error loading room:', err)

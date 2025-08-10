@@ -113,6 +113,19 @@
       </div>
     </div>
 
+    <!-- Debug Panel (개발용) -->
+    <div class="card-base bg-yellow-50 border-yellow-200" v-if="isDev">
+      <h3 class="text-sm font-bold mb-2">🐛 디버그 정보</h3>
+      <div class="text-xs space-y-1">
+        <div>현재 플레이어: {{ currentPlayer?.player_id?.slice(0, 8) || 'null' }}</div>
+        <div>방장 여부: {{ isRoomCreator }}</div>
+        <div>플레이어 수: {{ roomsStore.roomPlayers.length }}</div>
+        <div>모두 준비: {{ allPlayersReady }}</div>
+        <div>방 상태: {{ roomsStore.currentRoom?.status }}</div>
+        <div>게임 시작 가능: {{ canStartGame }}</div>
+      </div>
+    </div>
+
     <!-- Game Controls -->
     <div class="card-base">
       <h2 class="font-display text-xl font-semibold mb-4 flex items-center gap-2">
@@ -235,20 +248,15 @@ const showRules = ref(false)
 // Props
 const roomId = route.params.id as string
 
-// Computed
-const { 
-  loading, 
-  error,
-  isRoomCreator,
-  currentPlayer,
-  canStartGame,
-  loadRoom,
-  leaveRoom: leaveRoomAction,
-  toggleReady,
-  startGame: startGameAction
-} = roomsStore
+// Store reactive references
+const loading = computed(() => roomsStore.loading)
+const error = computed(() => roomsStore.error)
+const isRoomCreator = computed(() => roomsStore.isRoomCreator)
+const currentPlayer = computed(() => roomsStore.currentPlayer)
+const canStartGame = computed(() => roomsStore.canStartGame)
 
 const user = computed(() => authStore.user)
+const isDev = computed(() => import.meta.env.DEV)
 
 const sortedPlayers = computed(() => 
   [...roomsStore.roomPlayers].sort((a, b) => a.player_order - b.player_order)
@@ -276,21 +284,33 @@ const getPlayerName = (player: any) => {
 
 const leaveRoom = async () => {
   if (confirm('정말로 게임방을 나가시겠습니까?')) {
-    const result = await leaveRoomAction()
+    const result = await roomsStore.leaveRoom()
     if (!result.error) {
       router.push('/lobby')
     }
   }
 }
 
+const toggleReady = async () => {
+  await roomsStore.toggleReady()
+}
+
 const startGame = async () => {
-  if (!canStartGame) return
+  if (!canStartGame.value) {
+    console.log('❌ Cannot start game. Conditions not met:', {
+      canStartGame: canStartGame.value,
+      isRoomCreator: isRoomCreator.value,
+      playerCount: roomsStore.roomPlayers.length,
+      allReady: roomsStore.roomPlayers.every(p => p.is_ready)
+    })
+    return
+  }
   
   try {
     console.log('🚀 Starting game for room:', roomId)
     
     // Start the room's game state
-    const roomResult = await startGameAction()
+    const roomResult = await roomsStore.startGame()
     if (roomResult.error) {
       console.error('Failed to start room game:', roomResult.error)
       return
@@ -316,7 +336,17 @@ const startGame = async () => {
 // Lifecycle
 onMounted(async () => {
   if (roomId) {
-    await loadRoom(roomId)
+    console.log('🔄 Room.vue mounting, loading room:', roomId)
+    await roomsStore.loadRoom(roomId)
+    
+    // Debug current state after loading
+    console.log('🔍 Room loaded. Current state:', {
+      currentRoom: roomsStore.currentRoom?.name,
+      playerCount: roomsStore.roomPlayers.length,
+      currentPlayer: currentPlayer.value?.player_id?.slice(0, 8),
+      isRoomCreator: isRoomCreator.value,
+      canStartGame: canStartGame.value
+    })
   } else {
     router.push('/lobby')
   }

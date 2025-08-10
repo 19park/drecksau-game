@@ -72,6 +72,34 @@
       </div>
 
       <div v-else class="space-y-6">
+        <!-- Debug Panel (개발용) -->
+        <div v-if="isDev" class="card-base bg-yellow-50 border-yellow-200">
+          <h3 class="text-sm font-bold mb-2">🐛 게임 디버그 정보</h3>
+          <div class="text-xs space-y-2">
+            <div>
+              <strong>내 돼지:</strong> {{ gameStore.myPigs.map(p => `${p.pig_state}(${p.id.slice(0, 4)})`).join(', ') }}
+            </div>
+            <div>
+              <strong>상대 돼지:</strong> {{ gameStore.otherPlayersPigs.map(p => `${p.pig_state}${p.has_barn?'🏠':''}${p.barn_locked?'🔒':''}(${p.player_id.slice(0, 4)}-${p.id.slice(0, 4)})`).join(', ') }}
+            </div>
+            <div>
+              <strong>목욕가능 상대돼지:</strong> {{ gameStore.otherPlayersPigs.filter(p => p.pig_state === 'dirty' && (!p.has_barn || !p.barn_locked)).length }}마리
+            </div>
+            <div>
+              <strong>목욕카드 사용 가능:</strong> {{ gameStore.canPlayCard('bath') }}
+            </div>
+            <div>
+              <strong>현재 턴:</strong> {{ gameStore.isMyTurn ? '내 턴' : '상대 턴' }}
+            </div>
+            <div>
+              <strong>턴 진행중:</strong> {{ gameStore.turnInProgress }}
+            </div>
+            <div>
+              <strong>내 손패:</strong> {{ gameStore.myHand.map(h => `${h.card_type}(${h.card_count})`).join(', ') }}
+            </div>
+          </div>
+        </div>
+
         <!-- Game Board Layout -->
         <div class="grid grid-cols-12 gap-6">
           <!-- Other Players (Top/Sides) -->
@@ -119,12 +147,11 @@
             <!-- Deck and Discard -->
             <div class="flex justify-center gap-8 mb-6">
               <div class="text-center">
-                <div class="w-20 h-28 bg-primary-500 rounded-lg flex items-center justify-center text-white text-2xl cursor-pointer hover:bg-primary-600 transition-colors"
-                     @click="handleDrawCard"
-                     :class="{ 'opacity-50 cursor-not-allowed': !gameStore.isMyTurn }">
+                <div class="w-20 h-28 bg-primary-500 rounded-lg flex items-center justify-center text-white text-2xl">
                   🃏
                 </div>
                 <div class="text-sm text-gray-600 mt-1">덱 ({{ deckRemaining }})</div>
+                <div class="text-xs text-gray-500 mt-1">자동으로 뽑기</div>
               </div>
               
               <div class="text-center">
@@ -137,7 +164,19 @@
             
             <!-- Turn Indicator -->
             <div class="text-center mb-6">
-              <div v-if="gameStore.isMyTurn" class="inline-flex items-center gap-2 bg-primary-100 text-primary-800 px-4 py-2 rounded-full">
+              <div v-if="gameStore.isGameFinished" class="inline-flex items-center gap-2 bg-gray-100 text-gray-600 px-4 py-2 rounded-full">
+                <span class="text-xl">🏁</span>
+                <span class="font-semibold">게임 종료 - {{ gameStore.winnerInfo?.name }}님 승리!</span>
+              </div>
+              <div v-else-if="gameStore.cardExecutionInProgress" class="inline-flex items-center gap-2 bg-red-100 text-red-800 px-4 py-2 rounded-full animate-pulse">
+                <span class="text-xl">🚫</span>
+                <span class="font-semibold">카드 실행 중...</span>
+              </div>
+              <div v-else-if="gameStore.turnInProgress" class="inline-flex items-center gap-2 bg-yellow-100 text-yellow-800 px-4 py-2 rounded-full animate-pulse">
+                <span class="text-xl">⚡</span>
+                <span class="font-semibold">턴 진행 중...</span>
+              </div>
+              <div v-else-if="gameStore.isMyTurn" class="inline-flex items-center gap-2 bg-primary-100 text-primary-800 px-4 py-2 rounded-full">
                 <span class="text-xl">🎯</span>
                 <span class="font-semibold">당신의 차례입니다!</span>
               </div>
@@ -164,21 +203,26 @@
               
               <div class="space-y-2">
                 <button 
-                  v-if="gameStore.isMyTurn"
+                  v-if="gameStore.isMyTurn && !gameStore.isGameFinished"
                   @click="handleDiscardAllCards" 
                   class="w-full btn-secondary text-sm py-2"
-                  :disabled="!canDiscardAll"
+                  :disabled="!canDiscardAll || gameStore.turnInProgress || gameStore.cardExecutionInProgress"
                 >
                   🗑️ 모든 카드 버리기
                 </button>
                 
                 <button 
+                  v-if="!gameStore.isGameFinished"
                   @click="handleEndTurn" 
                   class="w-full btn-mud text-sm py-2"
-                  :disabled="!gameStore.isMyTurn"
+                  :disabled="!gameStore.isMyTurn || gameStore.turnInProgress || gameStore.cardExecutionInProgress"
                 >
                   ⏭️ 턴 종료
                 </button>
+                
+                <div v-if="gameStore.isGameFinished" class="text-center text-gray-500 py-4">
+                  게임이 종료되었습니다
+                </div>
               </div>
             </div>
           </div>
@@ -222,8 +266,9 @@
                 :key="card.card_type"
                 :card-type="card.card_type"
                 :count="card.card_count"
-                :playable="gameStore.canPlayCard(card.card_type)"
-                :disabled="!gameStore.isMyTurn"
+                :playable="gameStore.canPlayCard(card.card_type) && gameStore.isMyTurn && !gameStore.turnInProgress && !gameStore.cardExecutionInProgress && !gameStore.isGameFinished"
+                :disabled="!gameStore.isMyTurn || gameStore.turnInProgress || gameStore.cardExecutionInProgress || gameStore.isGameFinished"
+                :highlighted="gameStore.canPlayCard(card.card_type) && gameStore.isMyTurn && !gameStore.turnInProgress && !gameStore.cardExecutionInProgress && !gameStore.isGameFinished"
                 @play="handleCardPlay"
                 @click="(cardType) => console.log('Selected card:', cardType)"
               />
@@ -250,14 +295,18 @@
           
           <div class="prose prose-gray max-w-none">
             <h3>🎯 게임 목표</h3>
-            <p>가장 먼저 자신의 모든 돼지를 더럽게 만드는 플레이어가 승리합니다!</p>
+            <p><strong>돼지들을 더럽게 만들어야 합니다!</strong> 가장 먼저 자신의 앞에 있는 돼지 카드를 모두 진흙 목욕 중인 돼지 면으로 만들면 승리합니다.</p>
             
             <h3>🎮 게임 진행</h3>
             <ol>
-              <li>각 플레이어는 차례에 <strong>카드 1장 사용</strong> 또는 <strong>카드 1장 버리기</strong> 중 선택</li>
-              <li>카드를 사용하거나 버린 후 덱에서 <strong>1장을 뽑아</strong> 3장을 유지</li>
-              <li>사용할 카드가 없다면 손패 3장을 모두 버리고 새로 3장 뽑기 가능</li>
+              <li>각 턴마다 <strong>카드 1장 사용</strong> 또는 <strong>카드 1장 버리기</strong> 중 하나를 선택합니다</li>
+              <li>카드를 사용하거나 버린 후 덱에서 <strong>카드 1장을 뽑아</strong> 손패 3장을 유지합니다</li>
+              <li><strong>한 번에 카드는 1장만</strong> 사용할 수 있습니다</li>
+              <li>손패로 할 수 있는 일이 없다면 모든 카드를 버리고 새로 3장 뽑을 수 있습니다</li>
             </ol>
+            
+            <h3>🏆 승리 조건</h3>
+            <p><strong>한 사람이 자신의 돼지 모두를 더러운 돼지로 만들면 게임에서 즉시 승리</strong>합니다.</p>
             
             <h3>🃏 주요 카드</h3>
             <ul>
@@ -276,6 +325,7 @@
 
     <!-- Target Selector Modal -->
     <TargetSelector
+      v-if="showTargetSelector && !isTargetSelectionInProgress && !gameStore.cardExecutionInProgress"
       :show="showTargetSelector"
       :card-type="pendingCardPlay || undefined"
       :targets="availableTargets"
@@ -283,8 +333,8 @@
       @cancel="closeTargetSelector"
     />
 
-    <!-- Victory Modal -->
-    <div v-if="gameStore.hasWon" class="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+    <!-- Game Finished Modal - Winner -->
+    <div v-if="gameStore.isGameFinished && gameStore.isWinner" class="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4">
       <div class="bg-white rounded-xl shadow-2xl max-w-lg w-full text-center p-8">
         <div class="text-8xl mb-6">🏆</div>
         <h2 class="font-display text-3xl font-bold text-yellow-600 mb-4">축하합니다!</h2>
@@ -297,6 +347,33 @@
             💄 모든 돼지를 아름답게 만드셨습니다!<br>
             <span class="text-purple-600 font-semibold">확장판 규칙 승리!</span>
           </span>
+        </p>
+        
+        <div class="space-y-3">
+          <button 
+            @click="router.push('/lobby')"
+            class="w-full btn-primary"
+          >
+            🏠 로비로 돌아가기
+          </button>
+          <button 
+            @click="router.push(`/room/${roomId}`)"
+            class="w-full btn-secondary"
+          >
+            🔄 다시 게임하기
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Game Finished Modal - Loser -->
+    <div v-if="gameStore.isGameFinished && !gameStore.isWinner" class="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+      <div class="bg-white rounded-xl shadow-2xl max-w-lg w-full text-center p-8">
+        <div class="text-8xl mb-6">😞</div>
+        <h2 class="font-display text-3xl font-bold text-gray-600 mb-4">게임 종료</h2>
+        <p class="text-lg text-gray-700 mb-6">
+          <span class="text-purple-600 font-semibold">{{ gameStore.winnerInfo?.name }}님이 승리했습니다!</span><br>
+          다음 게임에서 승리하세요!
         </p>
         
         <div class="space-y-3">
@@ -339,6 +416,7 @@ const {
   showTargetSelector,
   availableTargets,
   pendingCardPlay,
+  isTargetSelectionInProgress,
   initiateCardPlay,
   selectTarget,
   closeTargetSelector,
@@ -354,6 +432,7 @@ const roomId = route.params.id as string
 
 // Computed
 const user = computed(() => authStore.user)
+const isDev = computed(() => import.meta.env.DEV)
 
 const deckRemaining = computed(() => gameStore.deckCount)
 
@@ -397,17 +476,17 @@ const handleCardPlay = async (cardType: string) => {
 }
 
 const handleDiscardAllCards = async () => {
-  if (!canDiscardAll.value) return
+  if (!canDiscardAll.value || gameStore.turnInProgress) return
   await gameStore.discardAllCards()
 }
 
 const handleEndTurn = async () => {
-  if (!gameStore.isMyTurn) return
+  if (!gameStore.isMyTurn || gameStore.turnInProgress) return
   await gameStore.endTurn()
 }
 
 const handleDrawCard = async () => {
-  if (!gameStore.isMyTurn) return
+  if (!gameStore.isMyTurn || gameStore.turnInProgress) return
   await gameStore.drawCard()
 }
 

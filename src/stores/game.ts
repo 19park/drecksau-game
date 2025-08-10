@@ -28,12 +28,15 @@ export const useGameStore = defineStore('game', () => {
   const selectedPig = ref<PlayerPig | null>(null)
   const showCardEffect = ref(false)
   const lastAction = ref<string>('')
+  const turnInProgress = ref(false) // Track if current turn is being processed
+  const cardExecutionInProgress = ref(false) // Track if any card execution is happening
   
   // Realtime connection state
   const isConnected = ref(false)
   const connectionError = ref('')
   
   let gameChannel: RealtimeChannel | null = null
+  let gameStatePollingInterval: NodeJS.Timeout | null = null
 
   // Computed
   const myPlayerOrder = computed(() => {
@@ -44,7 +47,9 @@ export const useGameStore = defineStore('game', () => {
 
   const isMyTurn = computed(() => {
     if (!gameState.value || !myPlayerOrder.value) return false
-    return gameState.value.current_player_order === myPlayerOrder.value
+    const result = gameState.value.current_player_order === myPlayerOrder.value
+    // console.log('🎯 isMyTurn check:', { current: gameState.value.current_player_order, my: myPlayerOrder.value, result })
+    return result
   })
 
   const currentPlayer = computed(() => {
@@ -69,30 +74,63 @@ export const useGameStore = defineStore('game', () => {
   )
 
   const canPlayCard = computed(() => (cardType: CardType) => {
-    if (!isMyTurn.value) return false
+    if (!isMyTurn.value || turnInProgress.value) {
+      return false
+    }
     
     const handCard = myHand.value.find(h => h.card_type === cardType)
-    if (!handCard || handCard.card_count <= 0) return false
+    if (!handCard || handCard.card_count <= 0) {
+      return false
+    }
     
     // Card-specific logic
+    let canPlay = false
     switch (cardType) {
       case 'mud':
-        return myPigs.value.some(pig => pig.pig_state === 'clean' && !pig.has_barn)
+        canPlay = myPigs.value.some(pig => pig.pig_state === 'clean' && !pig.has_barn)
+        break
       case 'barn':
-        return myPigs.value.some(pig => !pig.has_barn)
+        canPlay = myPigs.value.some(pig => !pig.has_barn)
+        break
       case 'bath':
-        return otherPlayersPigs.value.some(pig => pig.pig_state === 'dirty')
+        const validTargets = otherPlayersPigs.value.filter(pig => 
+          pig.pig_state === 'dirty' && (!pig.has_barn || !pig.barn_locked)
+        )
+        canPlay = validTargets.length > 0
+        
+        console.log('🛁 Bath card check:', {
+          isMyTurn: isMyTurn.value,
+          turnInProgress: turnInProgress.value,
+          otherPlayersPigsCount: otherPlayersPigs.value.length,
+          otherPlayersPigs: otherPlayersPigs.value.map(p => ({
+            id: p.id.slice(0, 8),
+            player_id: p.player_id.slice(0, 8),
+            pig_state: p.pig_state,
+            has_barn: p.has_barn,
+            barn_locked: p.barn_locked,
+            canTarget: p.pig_state === 'dirty' && (!p.has_barn || !p.barn_locked)
+          })),
+          validTargetsCount: validTargets.length,
+          canPlay
+        })
+        break
       case 'rain':
-        return playerPigs.value.some(pig => pig.pig_state === 'dirty' && !pig.has_barn)
+        canPlay = playerPigs.value.some(pig => pig.pig_state === 'dirty' && !pig.has_barn)
+        break
       case 'lightning':
-        return otherPlayersPigs.value.some(pig => pig.has_barn && !pig.has_lightning_rod)
+        canPlay = otherPlayersPigs.value.some(pig => pig.has_barn && !pig.has_lightning_rod)
+        break
       case 'lightning_rod':
-        return myPigs.value.some(pig => pig.has_barn && !pig.has_lightning_rod)
+        canPlay = myPigs.value.some(pig => pig.has_barn && !pig.has_lightning_rod)
+        break
       case 'barn_lock':
-        return myPigs.value.some(pig => pig.has_barn && pig.pig_state === 'dirty' && !pig.barn_locked)
+        canPlay = myPigs.value.some(pig => pig.has_barn && pig.pig_state === 'dirty' && !pig.barn_locked)
+        break
       default:
-        return true
+        canPlay = true
     }
+    
+    return canPlay
   })
 
   const hasWon = computed(() => {
@@ -120,6 +158,28 @@ export const useGameStore = defineStore('game', () => {
     return null
   })
 
+  const isGameFinished = computed(() => {
+    return gameState.value?.game_phase === 'finished'
+  })
+
+  const isWinner = computed(() => {
+    if (!isGameFinished.value) return false
+    return gameState.value?.winner_player_id === authStore.user?.id
+  })
+
+  const winnerInfo = computed(() => {
+    if (!isGameFinished.value) return null
+    
+    const winnerId = gameState.value?.winner_player_id
+    if (!winnerId) return null
+    
+    const winnerPlayer = roomPlayers.value.find(p => p.player_id === winnerId)
+    return {
+      id: winnerId,
+      name: winnerPlayer?.profile?.email?.split('@')[0] || 'Unknown Player'
+    }
+  })
+
   // Game initialization
   const initializeGame = async (roomId: string) => {
     loading.value = true
@@ -136,6 +196,9 @@ export const useGameStore = defineStore('game', () => {
       if (initError) throw initError
       
       console.log('✅ Game initialized successfully:', data)
+      
+      // Wait a moment for the database to commit the changes
+      await new Promise(resolve => setTimeout(resolve, 500))
       
       // Load the initialized game
       await loadGame(roomId)
@@ -162,10 +225,39 @@ export const useGameStore = defineStore('game', () => {
         .from('game_states')
         .select('*')
         .eq('room_id', roomId)
-        .single()
+        .maybeSingle()  // Use maybeSingle() instead of single() to handle 0 rows
       
       if (gameError) throw gameError
+      
+      if (!gameData) {
+        throw new Error('Game state not found. Game may not have started yet.')
+      }
+      
       gameState.value = gameData
+      
+      // Check if game is already finished
+      if (gameData.game_phase === 'finished') {
+        console.log('🏁 Game is already finished. Winner:', gameData.winner_player_id)
+        
+        // Set the appropriate win state based on who won
+        if (gameData.winner_player_id === authStore.user?.id) {
+          // I won the game
+          console.log('🏆 I am the winner!')
+        } else {
+          // Another player won
+          console.log('😞 Another player won the game')
+          
+          // Show finished state notification
+          const winnerPlayer = roomPlayers.value.find(p => p.player_id === gameData.winner_player_id)
+          const winnerName = winnerPlayer?.profile?.email?.split('@')[0] || 'Unknown Player'
+          lastAction.value = `🏆 ${winnerName}님이 이미 게임에서 승리했습니다!`
+          showCardEffect.value = true
+          
+          setTimeout(() => {
+            showCardEffect.value = false
+          }, 5000)
+        }
+      }
       
       // Load all player pigs
       const { data: pigsData, error: pigsError } = await supabase
@@ -175,6 +267,7 @@ export const useGameStore = defineStore('game', () => {
       
       if (pigsError) throw pigsError
       playerPigs.value = pigsData || []
+      console.log('🐷 Loaded player pigs:', playerPigs.value.length, playerPigs.value)
       
       // Load player hands (only mine for security)
       const { data: handsData, error: handsError } = await supabase
@@ -185,6 +278,7 @@ export const useGameStore = defineStore('game', () => {
       
       if (handsError) throw handsError
       playerHands.value = handsData || []
+      console.log('🃏 Loaded player hands:', playerHands.value.length, playerHands.value)
       
       // Load deck state
       const { data: deckData, error: deckError } = await supabase
@@ -200,7 +294,9 @@ export const useGameStore = defineStore('game', () => {
         .from('room_players')
         .select(`
           *,
-          user:users(email)
+          profile:player_id (
+            email
+          )
         `)
         .eq('room_id', roomId)
         .order('player_order')
@@ -220,15 +316,79 @@ export const useGameStore = defineStore('game', () => {
   }
 
   const playCard = async (cardType: CardType, targetPig?: PlayerPig) => {
-    if (!gameState.value || !authStore.user || !isMyTurn.value) {
-      return { error: 'Cannot play card' }
+    // Prevent any card execution if one is already in progress
+    if (cardExecutionInProgress.value) {
+      console.warn('🚫 Card execution already in progress, blocking:', cardType)
+      return { error: 'Card execution in progress' }
     }
     
-    if (!canPlayCard.value(cardType)) {
+    // Track if turn was already in progress (for target selection)
+    const wasTurnAlreadyInProgress = turnInProgress.value
+    
+    // Only check canPlayCard for new card plays, not target selection scenarios
+    if (!wasTurnAlreadyInProgress && !canPlayCard.value(cardType)) {
+      console.warn('⚠️ Cannot play card:', cardType)
+      console.log('Debug info:', {
+        isMyTurn: isMyTurn.value,
+        turnInProgress: turnInProgress.value,
+        cardExecutionInProgress: cardExecutionInProgress.value,
+        handCard: myHand.value.find(h => h.card_type === cardType),
+        myPigsCount: myPigs.value.length,
+        otherPigsCount: otherPlayersPigs.value.length,
+        gameState: !!gameState.value
+      })
+      
+      // Log specific card requirements
+      if (cardType === 'mud') {
+        const cleanPigsWithoutBarn = myPigs.value.filter(pig => pig.pig_state === 'clean' && !pig.has_barn)
+        console.log('Mud card requirements: Clean pigs without barn:', cleanPigsWithoutBarn.length, cleanPigsWithoutBarn)
+      } else if (cardType === 'bath') {
+        const validTargets = otherPlayersPigs.value.filter(pig => pig.pig_state === 'dirty' && (!pig.has_barn || !pig.barn_locked))
+        console.log('Bath card requirements: Dirty pigs that can be washed:', validTargets.length, validTargets)
+      }
+      
       return { error: 'Cannot play this card' }
+    }
+
+    // NOW set the card execution flag after validation passes
+    cardExecutionInProgress.value = true
+    console.log('🔒 Card execution started:', cardType)
+    
+    // If turn is not in progress, set it now (for direct plays)
+    if (!wasTurnAlreadyInProgress) {
+      turnInProgress.value = true
+    }
+    
+    if (!gameState.value || !authStore.user) {
+      turnInProgress.value = false
+      cardExecutionInProgress.value = false
+      return { error: 'Game not initialized or user not authenticated' }
+    }
+    
+    // Double-check it's the player's turn
+    if (!isMyTurn.value) {
+      console.warn('⚠️ Not player turn. Current:', gameState.value.current_player_order, 'Player:', myPlayerOrder.value)
+      turnInProgress.value = false
+      cardExecutionInProgress.value = false
+      return { error: 'It is not your turn' }
+    }
+    
+    // Verify turn on server side
+    const { data: isValidTurn, error: turnError } = await supabase.rpc('is_player_turn', {
+      room_id_param: gameState.value.room_id,
+      player_id_param: authStore.user.id
+    })
+    
+    if (turnError || !isValidTurn) {
+      console.error('❌ Server-side turn validation failed:', turnError)
+      turnInProgress.value = false
+      cardExecutionInProgress.value = false
+      return { error: 'Turn validation failed' }
     }
     
     try {
+      console.log('🎴 Playing card:', cardType, 'Target pig:', targetPig?.id, 'Turn was in progress:', wasTurnAlreadyInProgress)
+      
       // Execute card effect based on type
       await executeCardEffect(cardType, targetPig)
       
@@ -240,17 +400,27 @@ export const useGameStore = defineStore('game', () => {
       
       // Check for win condition
       if (hasWon.value) {
+        console.log('🎉 Player won! Ending game...')
         await endGame()
       } else {
         // End turn
+        console.log('🔄 Ending turn after card play')
         await endTurn()
       }
       
       return { error: null }
       
     } catch (err: any) {
+      console.error('❌ Error playing card:', err)
       error.value = err.message
+      // Reset flags on error
+      turnInProgress.value = false
+      cardExecutionInProgress.value = false
       return { error: err.message }
+    } finally {
+      // Always reset card execution flag
+      cardExecutionInProgress.value = false
+      console.log('🔓 Card execution finished:', cardType)
     }
   }
 
@@ -300,12 +470,25 @@ export const useGameStore = defineStore('game', () => {
     
     if (!targetPig) throw new Error('No valid pig to make dirty')
     
+    // Update local state immediately for instant feedback
+    const pigIndex = playerPigs.value.findIndex(pig => pig.id === targetPig!.id)
+    if (pigIndex !== -1) {
+      playerPigs.value[pigIndex].pig_state = 'dirty'
+      console.log('🔄 Immediately updated pig state locally:', targetPig.id)
+    }
+    
     const { error } = await supabase
       .from('player_pigs')
       .update({ pig_state: 'dirty' })
       .eq('id', targetPig.id)
     
-    if (error) throw error
+    if (error) {
+      // Revert local change if database update fails
+      if (pigIndex !== -1) {
+        playerPigs.value[pigIndex].pig_state = 'clean'
+      }
+      throw error
+    }
     
     // Play "Drecksau!" sound effect (mock)
     console.log('🐷 Drecksau!')
@@ -318,12 +501,25 @@ export const useGameStore = defineStore('game', () => {
     
     if (!targetPig) throw new Error('No valid pig for barn')
     
+    // Update local state immediately
+    const pigIndex = playerPigs.value.findIndex(pig => pig.id === targetPig!.id)
+    if (pigIndex !== -1) {
+      playerPigs.value[pigIndex].has_barn = true
+      console.log('🔄 Immediately updated barn state locally:', targetPig.id)
+    }
+    
     const { error } = await supabase
       .from('player_pigs')
       .update({ has_barn: true })
       .eq('id', targetPig.id)
     
-    if (error) throw error
+    if (error) {
+      // Revert local change if database update fails
+      if (pigIndex !== -1) {
+        playerPigs.value[pigIndex].has_barn = false
+      }
+      throw error
+    }
   }
 
   const applyBathCard = async (targetPig?: PlayerPig) => {
@@ -336,23 +532,51 @@ export const useGameStore = defineStore('game', () => {
     
     if (!targetPig) throw new Error('No valid pig to wash')
     
+    // Update local state immediately
+    const pigIndex = playerPigs.value.findIndex(pig => pig.id === targetPig!.id)
+    if (pigIndex !== -1) {
+      playerPigs.value[pigIndex].pig_state = 'clean'
+      console.log('🔄 Immediately updated pig state to clean locally:', targetPig.id)
+    }
+    
     const { error } = await supabase
       .from('player_pigs')
       .update({ pig_state: 'clean' })
       .eq('id', targetPig.id)
     
-    if (error) throw error
+    if (error) {
+      // Revert local change if database update fails
+      if (pigIndex !== -1) {
+        playerPigs.value[pigIndex].pig_state = 'dirty'
+      }
+      throw error
+    }
   }
 
   const applyRainCard = async () => {
-    // Clean all dirty pigs not in barns
+    // Update local state immediately for all affected pigs
+    const affectedPigs = playerPigs.value.filter(pig => pig.pig_state === 'dirty' && !pig.has_barn)
+    const originalStates = affectedPigs.map(pig => ({ id: pig.id, state: pig.pig_state }))
+    
+    affectedPigs.forEach(pig => {
+      pig.pig_state = 'clean'
+    })
+    console.log('🔄 Immediately updated rain card effects locally')
+    
     const { error } = await supabase
       .from('player_pigs')
       .update({ pig_state: 'clean' })
       .eq('pig_state', 'dirty')
       .eq('has_barn', false)
     
-    if (error) throw error
+    if (error) {
+      // Revert local changes if database update fails
+      originalStates.forEach(({ id, state }) => {
+        const pig = playerPigs.value.find(p => p.id === id)
+        if (pig) pig.pig_state = state as any
+      })
+      throw error
+    }
   }
 
   const applyLightningCard = async (targetPig?: PlayerPig) => {
@@ -364,15 +588,40 @@ export const useGameStore = defineStore('game', () => {
     
     if (!targetPig) throw new Error('No valid barn to strike')
     
-    const { error } = await supabase
-      .from('player_pigs')
-      .update({ 
-        has_barn: false,
-        barn_locked: false 
-      })
-      .eq('id', targetPig.id)
-    
-    if (error) throw error
+    // Update local state immediately
+    const pigIndex = playerPigs.value.findIndex(pig => pig.id === targetPig!.id)
+    if (pigIndex !== -1) {
+      const oldBarn = playerPigs.value[pigIndex].has_barn
+      const oldLock = playerPigs.value[pigIndex].barn_locked
+      playerPigs.value[pigIndex].has_barn = false
+      playerPigs.value[pigIndex].barn_locked = false
+      console.log('🔄 Immediately updated lightning strike locally:', targetPig.id)
+      
+      const { error } = await supabase
+        .from('player_pigs')
+        .update({ 
+          has_barn: false,
+          barn_locked: false 
+        })
+        .eq('id', targetPig.id)
+      
+      if (error) {
+        // Revert local changes if database update fails
+        playerPigs.value[pigIndex].has_barn = oldBarn
+        playerPigs.value[pigIndex].barn_locked = oldLock
+        throw error
+      }
+    } else {
+      const { error } = await supabase
+        .from('player_pigs')
+        .update({ 
+          has_barn: false,
+          barn_locked: false 
+        })
+        .eq('id', targetPig.id)
+      
+      if (error) throw error
+    }
   }
 
   const applyLightningRodCard = async (targetPig?: PlayerPig) => {
@@ -382,12 +631,25 @@ export const useGameStore = defineStore('game', () => {
     
     if (!targetPig) throw new Error('No valid barn for lightning rod')
     
+    // Update local state immediately
+    const pigIndex = playerPigs.value.findIndex(pig => pig.id === targetPig!.id)
+    if (pigIndex !== -1) {
+      playerPigs.value[pigIndex].has_lightning_rod = true
+      console.log('🔄 Immediately updated lightning rod locally:', targetPig.id)
+    }
+    
     const { error } = await supabase
       .from('player_pigs')
       .update({ has_lightning_rod: true })
       .eq('id', targetPig.id)
     
-    if (error) throw error
+    if (error) {
+      // Revert local change if database update fails
+      if (pigIndex !== -1) {
+        playerPigs.value[pigIndex].has_lightning_rod = false
+      }
+      throw error
+    }
   }
 
   const applyBarnLockCard = async (targetPig?: PlayerPig) => {
@@ -399,32 +661,69 @@ export const useGameStore = defineStore('game', () => {
     
     if (!targetPig) throw new Error('No valid barn to lock')
     
+    // Update local state immediately
+    const pigIndex = playerPigs.value.findIndex(pig => pig.id === targetPig!.id)
+    if (pigIndex !== -1) {
+      playerPigs.value[pigIndex].barn_locked = true
+      console.log('🔄 Immediately updated barn lock locally:', targetPig.id)
+    }
+    
     const { error } = await supabase
       .from('player_pigs')
       .update({ barn_locked: true })
       .eq('id', targetPig.id)
     
-    if (error) throw error
+    if (error) {
+      // Revert local change if database update fails
+      if (pigIndex !== -1) {
+        playerPigs.value[pigIndex].barn_locked = false
+      }
+      throw error
+    }
   }
 
   const removeCardFromHand = async (cardType: CardType) => {
     const handCard = myHand.value.find(h => h.card_type === cardType)
     if (!handCard) return
     
+    // Update local state immediately
+    const handIndex = playerHands.value.findIndex(h => h.id === handCard.id)
     if (handCard.card_count > 1) {
-      const { error } = await supabase
-        .from('player_hands')
-        .update({ card_count: handCard.card_count - 1 })
-        .eq('id', handCard.id)
-      
-      if (error) throw error
+      // Decrease card count locally
+      if (handIndex !== -1) {
+        const originalCount = playerHands.value[handIndex].card_count
+        playerHands.value[handIndex].card_count = originalCount - 1
+        console.log('🔄 Immediately decreased card count locally:', cardType)
+        
+        const { error } = await supabase
+          .from('player_hands')
+          .update({ card_count: handCard.card_count - 1 })
+          .eq('id', handCard.id)
+        
+        if (error) {
+          // Revert local change
+          playerHands.value[handIndex].card_count = originalCount
+          throw error
+        }
+      }
     } else {
-      const { error } = await supabase
-        .from('player_hands')
-        .delete()
-        .eq('id', handCard.id)
-      
-      if (error) throw error
+      // Remove card from hand locally
+      if (handIndex !== -1) {
+        const removedCard = playerHands.value[handIndex]
+        playerHands.value.splice(handIndex, 1)
+        console.log('🔄 Immediately removed card from hand locally:', cardType)
+        
+        const { error } = await supabase
+          .from('player_hands')
+          .delete()
+          .eq('id', handCard.id)
+        
+        if (error) {
+          // Revert local change
+          playerHands.value.splice(handIndex, 0, removedCard)
+          throw error
+        }
+      }
     }
   }
 
@@ -442,6 +741,9 @@ export const useGameStore = defineStore('game', () => {
 
   const discardCard = async (cardType: CardType) => {
     if (!isMyTurn.value) return { error: 'Not your turn' }
+    
+    // Set turn in progress
+    turnInProgress.value = true
     
     try {
       // Remove card from hand
@@ -470,6 +772,7 @@ export const useGameStore = defineStore('game', () => {
       return { error: null }
       
     } catch (err: any) {
+      turnInProgress.value = false
       return { error: err.message }
     }
   }
@@ -478,6 +781,9 @@ export const useGameStore = defineStore('game', () => {
     if (!isMyTurn.value || myHand.value.length === 0) {
       return { error: 'Cannot discard all cards' }
     }
+    
+    // Set turn in progress
+    turnInProgress.value = true
     
     try {
       // Remove all cards from hand
@@ -500,12 +806,18 @@ export const useGameStore = defineStore('game', () => {
       return { error: null }
       
     } catch (err: any) {
+      turnInProgress.value = false
       return { error: err.message }
     }
   }
 
   const endTurn = async () => {
-    if (!gameState.value) return
+    if (!gameState.value) {
+      console.log('⚠️ endTurn: No game state')
+      return
+    }
+    
+    console.log('🔄 Starting endTurn, current player:', gameState.value.current_player_order)
     
     // Get next player order
     const { data: players, error: playersError } = await supabase
@@ -522,13 +834,27 @@ export const useGameStore = defineStore('game', () => {
     const nextIndex = (currentIndex + 1) % playerOrders.length
     const nextOrder = playerOrders[nextIndex]
     
+    console.log('🔄 Changing turn from', currentOrder, 'to', nextOrder)
+    
     // Update game state
     const { error } = await supabase
       .from('game_states')
       .update({ current_player_order: nextOrder })
       .eq('room_id', gameState.value.room_id)
     
-    if (error) throw error
+    if (error) {
+      console.error('❌ Error updating game state in endTurn:', error)
+      throw error
+    }
+    
+    console.log('✅ Turn ended successfully, next player:', nextOrder)
+    
+    // Update local game state immediately (don't wait for realtime update)
+    gameState.value.current_player_order = nextOrder
+    console.log('🔄 Local game state updated immediately, current player:', gameState.value.current_player_order)
+    
+    // Reset turn in progress flag
+    turnInProgress.value = false
   }
 
   const endTurnWithoutDraw = async () => {
@@ -539,13 +865,54 @@ export const useGameStore = defineStore('game', () => {
   const endGame = async () => {
     if (!gameState.value || !authStore.user) return
     
-    const { data, error } = await supabase.rpc('check_game_winner', {
-      room_id_param: gameState.value.room_id,
-      player_id_param: authStore.user.id
-    })
-    
-    if (error) throw error
-    return data
+    try {
+      console.log('🏆 Ending game, updating game state to finished...')
+      
+      // Update game state to finished with winner information
+      const { error: gameStateError } = await supabase
+        .from('game_states')
+        .update({
+          game_phase: 'finished',
+          winner_player_id: authStore.user.id,
+          finished_at: new Date().toISOString()
+        })
+        .eq('room_id', gameState.value.room_id)
+      
+      if (gameStateError) throw gameStateError
+      
+      // Update local game state immediately
+      gameState.value.game_phase = 'finished'
+      gameState.value.winner_player_id = authStore.user.id
+      console.log('🏆 Game state updated to finished locally')
+      
+      // Broadcast game end to all players
+      if (gameChannel) {
+        await gameChannel.send({
+          type: 'broadcast',
+          event: 'game_finished',
+          payload: {
+            winner_player_id: authStore.user.id,
+            winner_name: authStore.user.email?.split('@')[0] || 'Unknown',
+            win_condition: winConditionType.value,
+            finished_at: new Date().toISOString()
+          }
+        })
+        console.log('📡 Game finished broadcast sent')
+      }
+      
+      // Call the check_game_winner function for any additional processing
+      const { data, error } = await supabase.rpc('check_game_winner', {
+        room_id_param: gameState.value.room_id,
+        player_id_param: authStore.user.id
+      })
+      
+      if (error) console.warn('Warning in check_game_winner:', error)
+      return data
+      
+    } catch (err: any) {
+      console.error('❌ Error ending game:', err)
+      throw err
+    }
   }
 
   // Broadcast game action to other players
@@ -572,34 +939,87 @@ export const useGameStore = defineStore('game', () => {
 
   // Realtime update handlers
   const handleGameStateUpdate = async (payload: any) => {
-    console.log('🎮 Game state update:', payload)
+    console.log('🎮 Game state update received:', payload)
     
     if (payload.eventType === 'UPDATE' && payload.new) {
+      const oldCurrentPlayer = gameState.value?.current_player_order
+      const newCurrentPlayer = payload.new.current_player_order
+      
+      console.log('🔄 Game state update: turn changing from', oldCurrentPlayer, 'to', newCurrentPlayer)
+      
       gameState.value = payload.new
+      
+      // Reset turn in progress when turn changes to someone else
+      if (oldCurrentPlayer && oldCurrentPlayer !== newCurrentPlayer && newCurrentPlayer !== myPlayerOrder.value) {
+        turnInProgress.value = false
+        console.log('🔄 Turn in progress reset for player', myPlayerOrder.value)
+      }
+      
+      // Check if it's now my turn
+      if (newCurrentPlayer === myPlayerOrder.value) {
+        console.log('🎯 It is now my turn! Player order:', myPlayerOrder.value)
+      } else {
+        console.log('⏳ Waiting for turn. Current:', newCurrentPlayer, 'My order:', myPlayerOrder.value)
+      }
     } else if (payload.eventType === 'DELETE') {
+      console.log('🗑️ Game state deleted')
       gameState.value = null
+      turnInProgress.value = false
     }
   }
 
   const handlePlayerPigsUpdate = async (payload: any) => {
-    console.log('🐷 Player pigs update:', payload)
+    console.log('🐷 Player pigs update:', payload.eventType, {
+      new: payload.new ? {
+        id: payload.new.id?.slice(0, 8),
+        player_id: payload.new.player_id?.slice(0, 8),
+        pig_state: payload.new.pig_state,
+        has_barn: payload.new.has_barn
+      } : null,
+      old: payload.old ? {
+        id: payload.old.id?.slice(0, 8),
+        player_id: payload.old.player_id?.slice(0, 8),
+        pig_state: payload.old.pig_state
+      } : null
+    })
     
     if (payload.eventType === 'INSERT' && payload.new) {
       const existingIndex = playerPigs.value.findIndex(pig => pig.id === payload.new.id)
       if (existingIndex === -1) {
         playerPigs.value.push(payload.new)
+        console.log('✅ Added new pig to playerPigs')
+      } else {
+        console.log('⚠️ Pig already exists, not adding')
       }
     } else if (payload.eventType === 'UPDATE' && payload.new) {
       const index = playerPigs.value.findIndex(pig => pig.id === payload.new.id)
       if (index !== -1) {
+        const oldState = playerPigs.value[index].pig_state
         playerPigs.value[index] = payload.new
+        console.log('✅ Updated pig in playerPigs:', {
+          id: payload.new.id?.slice(0, 8),
+          oldState,
+          newState: payload.new.pig_state
+        })
+      } else {
+        console.log('⚠️ Pig not found for update, adding:', payload.new.id?.slice(0, 8))
+        playerPigs.value.push(payload.new)
       }
     } else if (payload.eventType === 'DELETE' && payload.old) {
       const index = playerPigs.value.findIndex(pig => pig.id === payload.old.id)
       if (index !== -1) {
         playerPigs.value.splice(index, 1)
+        console.log('✅ Removed pig from playerPigs')
       }
     }
+    
+    // Log current state after update
+    console.log('🔍 Current playerPigs count:', playerPigs.value.length)
+    console.log('🔍 Other players pigs:', otherPlayersPigs.value.map(p => ({
+      id: p.id?.slice(0, 8),
+      player_id: p.player_id?.slice(0, 8),
+      pig_state: p.pig_state
+    })))
   }
 
   const handlePlayerHandsUpdate = async (payload: any) => {
@@ -652,7 +1072,63 @@ export const useGameStore = defineStore('game', () => {
   const handleGameActionBroadcast = async (payload: any) => {
     console.log('📡 Game action broadcast:', payload)
     
-    const { action, player_id } = payload.payload
+    const { action, player_id, target_pig_id } = payload.payload
+    
+    // Apply immediate state changes for other players' actions
+    if (player_id !== authStore.user?.id && target_pig_id) {
+      console.log('🔄 Applying broadcast action from other player:', { action, target_pig_id })
+      
+      const pigIndex = playerPigs.value.findIndex(pig => pig.id === target_pig_id)
+      if (pigIndex !== -1) {
+        const targetPig = playerPigs.value[pigIndex]
+        console.log('🎯 Found target pig for broadcast update:', {
+          pigId: target_pig_id.slice(0, 8),
+          currentState: targetPig.pig_state,
+          action
+        })
+        
+        switch (action) {
+          case 'mud':
+            playerPigs.value[pigIndex].pig_state = 'dirty'
+            console.log('🔄 Broadcast: Updated pig to dirty')
+            break
+          case 'bath':
+            playerPigs.value[pigIndex].pig_state = 'clean'
+            console.log('🔄 Broadcast: Updated pig to clean')
+            break
+          case 'barn':
+            playerPigs.value[pigIndex].has_barn = true
+            console.log('🔄 Broadcast: Added barn to pig')
+            break
+          case 'lightning':
+            playerPigs.value[pigIndex].has_barn = false
+            playerPigs.value[pigIndex].barn_locked = false
+            console.log('🔄 Broadcast: Removed barn from pig')
+            break
+          case 'lightning_rod':
+            playerPigs.value[pigIndex].has_lightning_rod = true
+            console.log('🔄 Broadcast: Added lightning rod to pig')
+            break
+          case 'barn_lock':
+            playerPigs.value[pigIndex].barn_locked = true
+            console.log('🔄 Broadcast: Locked barn')
+            break
+        }
+      } else {
+        console.log('⚠️ Target pig not found for broadcast update:', target_pig_id)
+      }
+    }
+    
+    // Handle rain card separately (affects multiple pigs)
+    if (player_id !== authStore.user?.id && action === 'rain') {
+      console.log('🔄 Applying rain card broadcast effect')
+      playerPigs.value.forEach((pig, index) => {
+        if (pig.pig_state === 'dirty' && !pig.has_barn) {
+          playerPigs.value[index].pig_state = 'clean'
+          console.log('🔄 Broadcast: Rain cleaned pig:', pig.id.slice(0, 8))
+        }
+      })
+    }
     
     // Show visual feedback for actions by other players
     if (player_id !== authStore.user?.id) {
@@ -662,6 +1138,36 @@ export const useGameStore = defineStore('game', () => {
       setTimeout(() => {
         showCardEffect.value = false
       }, 2000)
+    }
+  }
+
+  const handleGameFinishedBroadcast = async (payload: any) => {
+    console.log('📡 Game finished broadcast received:', payload)
+    
+    const { winner_player_id, winner_name, win_condition } = payload.payload
+    
+    // Only show victory modal to other players (winner already sees it)
+    if (winner_player_id !== authStore.user?.id) {
+      console.log('🏆 Another player won! Setting up victory modal for winner:', winner_name)
+      
+      // Set game state to show defeat modal or winner announcement
+      hasWon.value = false // This player didn't win
+      winConditionType.value = win_condition
+      
+      // Update local game state
+      if (gameState.value) {
+        gameState.value.game_phase = 'finished'
+        gameState.value.winner_player_id = winner_player_id
+      }
+      
+      // Show notification that another player won
+      lastAction.value = `🏆 ${winner_name}님이 게임에서 승리했습니다!`
+      showCardEffect.value = true
+      
+      // Keep the notification longer for game end
+      setTimeout(() => {
+        showCardEffect.value = false
+      }, 5000)
     }
   }
 
@@ -701,12 +1207,18 @@ export const useGameStore = defineStore('game', () => {
       .on('broadcast', {
         event: 'game_action'
       }, handleGameActionBroadcast)
+      .on('broadcast', {
+        event: 'game_finished'
+      }, handleGameFinishedBroadcast)
       .subscribe((status) => {
         console.log('📡 Subscription status:', status)
         if (status === 'SUBSCRIBED') {
           console.log('✅ Successfully subscribed to game updates')
           isConnected.value = true
           connectionError.value = ''
+          
+          // Start polling as backup (every 2 seconds)
+          startGameStatePolling(roomId)
         } else if (status === 'CHANNEL_ERROR') {
           console.error('❌ Error subscribing to game updates')
           isConnected.value = false
@@ -715,8 +1227,55 @@ export const useGameStore = defineStore('game', () => {
         } else if (status === 'CLOSED') {
           console.log('🔌 Connection closed')
           isConnected.value = false
+          stopGameStatePolling()
         }
       })
+  }
+
+  // Backup polling mechanism
+  const startGameStatePolling = (roomId: string) => {
+    // Clear any existing polling
+    stopGameStatePolling()
+    
+    console.log('🔄 Starting game state polling backup')
+    gameStatePollingInterval = setInterval(async () => {
+      try {
+        const { data, error } = await supabase
+          .from('game_states')
+          .select('*')
+          .eq('room_id', roomId)
+          .single()
+        
+        if (error) {
+          console.error('⚠️ Polling error:', error)
+          return
+        }
+        
+        if (data && gameState.value) {
+          // Check if state has changed
+          if (data.current_player_order !== gameState.value.current_player_order) {
+            console.log('🔄 Polling detected state change:', data.current_player_order)
+            
+            // Simulate realtime update
+            handleGameStateUpdate({
+              eventType: 'UPDATE',
+              new: data,
+              old: gameState.value
+            })
+          }
+        }
+      } catch (err) {
+        console.error('⚠️ Polling exception:', err)
+      }
+    }, 2000) // Poll every 2 seconds
+  }
+  
+  const stopGameStatePolling = () => {
+    if (gameStatePollingInterval) {
+      console.log('🔄 Stopping game state polling')
+      clearInterval(gameStatePollingInterval)
+      gameStatePollingInterval = null
+    }
   }
 
   const stopGameSubscription = () => {
@@ -726,6 +1285,7 @@ export const useGameStore = defineStore('game', () => {
       gameChannel = null
       isConnected.value = false
     }
+    stopGameStatePolling()
   }
 
   // Cleanup
@@ -737,8 +1297,11 @@ export const useGameStore = defineStore('game', () => {
     roomPlayers.value = []
     selectedCard.value = null
     selectedPig.value = null
+    turnInProgress.value = false
+    cardExecutionInProgress.value = false
     error.value = ''
     stopGameSubscription()
+    stopGameStatePolling()
   }
 
   return {
@@ -754,6 +1317,8 @@ export const useGameStore = defineStore('game', () => {
     selectedPig,
     showCardEffect,
     lastAction,
+    turnInProgress,
+    cardExecutionInProgress,
     isConnected,
     connectionError,
     
@@ -768,6 +1333,9 @@ export const useGameStore = defineStore('game', () => {
     canPlayCard,
     hasWon,
     winConditionType,
+    isGameFinished,
+    isWinner,
+    winnerInfo,
     
     // Actions
     initializeGame,
