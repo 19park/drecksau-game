@@ -90,6 +90,7 @@ export const useGameStore = defineStore('game', () => {
         canPlay = myPigs.value.some(pig => pig.pig_state === 'clean' && !pig.has_barn)
         break
       case 'barn':
+        // Barn can be placed on any pig (clean or dirty) that doesn't have a barn
         canPlay = myPigs.value.some(pig => !pig.has_barn)
         break
       case 'bath':
@@ -115,6 +116,7 @@ export const useGameStore = defineStore('game', () => {
         })
         break
       case 'rain':
+        // Rain card affects ALL players' dirty pigs (not just mine)
         canPlay = playerPigs.value.some(pig => pig.pig_state === 'dirty' && !pig.has_barn)
         break
       case 'lightning':
@@ -131,6 +133,26 @@ export const useGameStore = defineStore('game', () => {
     }
     
     return canPlay
+  })
+
+  // Check if player cannot play any cards and can discard all 3
+  const canDiscardAllCards = computed(() => {
+    if (!isMyTurn.value || turnInProgress.value) {
+      return false
+    }
+    
+    // Must have exactly 3 cards
+    const totalCards = myHand.value.reduce((sum, hand) => sum + hand.card_count, 0)
+    if (totalCards !== 3) {
+      return false
+    }
+    
+    // None of the cards must be playable
+    const playableCards = myHand.value.filter(hand => 
+      hand.card_count > 0 && canPlayCard.value(hand.card_type)
+    )
+    
+    return playableCards.length === 0
   })
 
   const hasWon = computed(() => {
@@ -785,14 +807,21 @@ export const useGameStore = defineStore('game', () => {
   }
 
   const discardAllCards = async () => {
-    if (!isMyTurn.value || myHand.value.length === 0) {
-      return { error: 'Cannot discard all cards' }
+    if (!canDiscardAllCards.value) {
+      return { error: 'Cannot discard all cards - not all conditions met' }
     }
     
     // Set turn in progress
     turnInProgress.value = true
     
     try {
+      console.log('🗑️ Discarding all cards - showing to other players')
+      
+      // Show cards to other players (broadcast action)
+      const cardsList = myHand.value.filter(h => h.card_count > 0).map(h => `${h.card_type}(${h.card_count})`).join(', ')
+      lastAction.value = `모든 카드 공개 후 버림: ${cardsList}`
+      showCardEffect.value = true
+      
       // Remove all cards from hand
       const { error: deleteError } = await supabase
         .from('player_hands')
@@ -802,18 +831,29 @@ export const useGameStore = defineStore('game', () => {
       
       if (deleteError) throw deleteError
       
+      // Clear local hand state
+      playerHands.value = []
+      
       // Draw 3 new cards
       for (let i = 0; i < 3; i++) {
         await drawCard()
       }
       
-      // End turn (this completes the action, no additional card draw)
+      // End turn (this completes the action, no additional card draw)  
       await endTurnWithoutDraw()
       
+      // Hide the card effect after a delay
+      setTimeout(() => {
+        showCardEffect.value = false
+      }, 4000)
+      
+      console.log('✅ All cards discarded and redrawn successfully')
       return { error: null }
       
     } catch (err: any) {
+      console.error('❌ Error discarding all cards:', err)
       turnInProgress.value = false
+      showCardEffect.value = false
       return { error: err.message }
     }
   }
@@ -1452,6 +1492,7 @@ export const useGameStore = defineStore('game', () => {
     otherPlayersPigs,
     deckCount,
     canPlayCard,
+    canDiscardAllCards,
     hasWon,
     winConditionType,
     isGameFinished,

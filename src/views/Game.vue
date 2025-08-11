@@ -231,14 +231,14 @@
                   🗂️ 카드 1장 버리기
                 </button>
                 
-                <!-- Discard All Cards - Only as fallback option -->
+                <!-- Discard All Cards - Only when no cards can be played -->
                 <button 
-                  v-if="gameStore.isMyTurn && !gameStore.isGameFinished && !hasAnyPlayableCard"
+                  v-if="gameStore.canDiscardAllCards"
                   @click="handleDiscardAllCards" 
-                  class="w-full btn-secondary text-sm py-2"
-                  :disabled="!canDiscardAll || gameStore.turnInProgress || gameStore.cardExecutionInProgress"
+                  class="w-full btn-primary text-sm py-2 bg-yellow-500 hover:bg-yellow-600"
+                  :disabled="gameStore.turnInProgress || gameStore.cardExecutionInProgress"
                 >
-                  🗑️ 모든 카드 버리기 (대안)
+                  🗑️ 모든 카드 공개 후 버리기
                 </button>
                 
                 <button 
@@ -521,8 +521,20 @@ const handleCardPlay = async (cardType: string) => {
 }
 
 const handleDiscardAllCards = async () => {
-  if (!canDiscardAll.value || gameStore.turnInProgress) return
-  await gameStore.discardAllCards()
+  if (!gameStore.canDiscardAllCards || gameStore.turnInProgress) return
+  
+  try {
+    console.log('🗑️ Attempting to discard all cards')
+    const result = await gameStore.discardAllCards()
+    
+    if (result.error) {
+      console.error('Failed to discard all cards:', result.error)
+    } else {
+      console.log('✅ Successfully discarded all cards')
+    }
+  } catch (error) {
+    console.error('Error discarding all cards:', error)
+  }
 }
 
 const handleEndTurn = async () => {
