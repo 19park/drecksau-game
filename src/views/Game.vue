@@ -2,39 +2,43 @@
   <div class="min-h-screen bg-gradient-to-br from-green-50 to-blue-50">
     <!-- Game Header -->
     <div class="bg-white/90 backdrop-blur-sm shadow-game sticky top-0 z-40">
-      <div class="container mx-auto px-4 py-3">
+      <div class="container mx-auto px-3 sm:px-4 py-2 sm:py-3">
         <div class="flex items-center justify-between">
-          <div class="flex items-center gap-4">
-            <h1 class="font-game text-2xl text-primary-600">{{ roomsStore.currentRoom?.name || '게임' }}</h1>
-            <div class="flex items-center gap-2 text-sm text-gray-600">
-              <span>🎮 게임 중</span>
-              <span>•</span>
-              <span>덱: {{ deckRemaining }}장</span>
-              <span>•</span>
+          <div class="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-4 min-w-0">
+            <h1 class="font-game text-lg sm:text-2xl text-primary-600 truncate">{{ roomsStore.currentRoom?.name || '게임' }}</h1>
+            <div class="flex items-center gap-1 sm:gap-2 text-xs sm:text-sm text-gray-600">
+              <span>🎮</span>
+              <span class="hidden sm:inline">게임 중</span>
+              <span class="hidden sm:inline">•</span>
+              <span>덱: {{ deckRemaining }}</span>
+              <span class="hidden sm:inline">•</span>
               <span :class="{ 
                 'text-green-600': gameStore.isConnected, 
                 'text-red-600': !gameStore.isConnected && !gameStore.loading,
                 'text-yellow-600': gameStore.loading
-              }">
-                {{ gameStore.isConnected ? '🟢 연결됨' : (gameStore.loading ? '🟡 연결중' : '🔴 연결 끊김') }}
+              }" class="truncate">
+                {{ gameStore.isConnected ? '🟢' : (gameStore.loading ? '🟡' : '🔴') }}
+                <span class="hidden sm:inline ml-1">
+                  {{ gameStore.isConnected ? '연결됨' : (gameStore.loading ? '연결중' : '연결 끊김') }}
+                </span>
               </span>
             </div>
           </div>
           
-          <div class="flex items-center gap-3">
+          <div class="flex items-center gap-1 sm:gap-3 shrink-0 relative">
             <button 
               @click="showGameMenu = !showGameMenu"
-              class="text-gray-600 hover:text-gray-800 p-2"
+              class="text-gray-600 hover:text-gray-800 p-1 sm:p-2"
             >
               ⚙️
             </button>
             
             <!-- Game Menu Dropdown -->
-            <div v-if="showGameMenu" class="absolute top-full right-4 mt-2 bg-white rounded-lg shadow-lg border p-2 min-w-[160px]">
-              <button @click="showRules = true; showGameMenu = false" class="w-full text-left px-3 py-2 hover:bg-gray-100 rounded">
+            <div v-if="showGameMenu" class="absolute top-full right-0 mt-2 bg-white rounded-lg shadow-lg border p-2 min-w-[160px] z-50">
+              <button @click="showRules = true; showGameMenu = false" class="w-full text-left px-3 py-2 hover:bg-gray-100 rounded text-sm">
                 📜 게임 규칙
               </button>
-              <button @click="confirmLeaveGame" class="w-full text-left px-3 py-2 hover:bg-gray-100 rounded text-red-600">
+              <button @click="confirmLeaveGame" class="w-full text-left px-3 py-2 hover:bg-gray-100 rounded text-red-600 text-sm">
                 🚪 게임 나가기
               </button>
             </div>
@@ -43,7 +47,7 @@
       </div>
     </div>
 
-    <div class="container mx-auto px-4 py-6">
+    <div class="container mx-auto px-2 sm:px-4 py-3 sm:py-6">
       <div v-if="gameStore.loading" class="flex items-center justify-center min-h-[60vh]">
         <div class="text-center">
           <div class="loading-spinner mx-auto mb-4"></div>
@@ -110,14 +114,14 @@
         </div>
 
         <!-- Game Board Layout -->
-        <div class="grid grid-cols-12 gap-6">
+        <div class="grid grid-cols-12 gap-3 sm:gap-6">
           <!-- Other Players (Top/Sides) -->
           <div class="col-span-12">
-            <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4 mb-4 sm:mb-6">
               <div 
                 v-for="player in otherPlayers" 
                 :key="player.player_id"
-                class="card-base p-4"
+                class="card-base p-3 sm:p-4"
                 :class="{
                   'ring-2 ring-primary-400 bg-primary-50': isCurrentPlayer(player.player_order),
                   'opacity-75': !isCurrentPlayer(player.player_order)
@@ -152,63 +156,63 @@
           </div>
 
           <!-- Central Game Area -->
-          <div class="col-span-12 md:col-span-8">
+          <div class="col-span-12 lg:col-span-8">
             <!-- Deck and Discard -->
-            <div class="flex justify-center gap-8 mb-6">
+            <div class="flex justify-center gap-4 sm:gap-8 mb-4 sm:mb-6">
               <div class="text-center">
-                <div class="w-20 h-28 bg-primary-500 rounded-lg flex items-center justify-center text-white text-2xl">
+                <div class="w-16 h-24 sm:w-20 sm:h-28 bg-primary-500 rounded-lg flex items-center justify-center text-white text-xl sm:text-2xl">
                   🃏
                 </div>
-                <div class="text-sm text-gray-600 mt-1">덱 ({{ deckRemaining }})</div>
-                <div class="text-xs text-gray-500 mt-1">자동으로 뽑기</div>
+                <div class="text-xs sm:text-sm text-gray-600 mt-1">덱 ({{ deckRemaining }})</div>
+                <div class="text-xs text-gray-500 mt-1 hidden sm:block">자동으로 뽑기</div>
               </div>
               
               <div class="text-center">
-                <div class="w-20 h-28 bg-gray-300 rounded-lg flex items-center justify-center text-gray-600 text-2xl">
+                <div class="w-16 h-24 sm:w-20 sm:h-28 bg-gray-300 rounded-lg flex items-center justify-center text-gray-600 text-xl sm:text-2xl">
                   🗑️
                 </div>
-                <div class="text-sm text-gray-600 mt-1">버린카드</div>
+                <div class="text-xs sm:text-sm text-gray-600 mt-1">버린카드</div>
               </div>
             </div>
             
             <!-- Turn Indicator -->
-            <div class="text-center mb-6">
-              <div v-if="gameStore.isGameFinished" class="inline-flex items-center gap-2 bg-gray-100 text-gray-600 px-4 py-2 rounded-full">
-                <span class="text-xl">🏁</span>
-                <span class="font-semibold">게임 종료 - {{ gameStore.winnerInfo?.name }}님 승리!</span>
+            <div class="text-center mb-4 sm:mb-6 px-2">
+              <div v-if="gameStore.isGameFinished" class="inline-flex items-center gap-2 bg-gray-100 text-gray-600 px-3 sm:px-4 py-2 rounded-full max-w-full">
+                <span class="text-lg sm:text-xl">🏁</span>
+                <span class="font-semibold text-sm sm:text-base truncate">게임 종료 - {{ gameStore.winnerInfo?.name }}님 승리!</span>
               </div>
-              <div v-else-if="gameStore.cardExecutionInProgress" class="inline-flex items-center gap-2 bg-red-100 text-red-800 px-4 py-2 rounded-full animate-pulse">
-                <span class="text-xl">🚫</span>
-                <span class="font-semibold">카드 실행 중...</span>
+              <div v-else-if="gameStore.cardExecutionInProgress" class="inline-flex items-center gap-2 bg-red-100 text-red-800 px-3 sm:px-4 py-2 rounded-full animate-pulse">
+                <span class="text-lg sm:text-xl">🚫</span>
+                <span class="font-semibold text-sm sm:text-base">카드 실행 중...</span>
               </div>
-              <div v-else-if="gameStore.turnInProgress" class="inline-flex items-center gap-2 bg-yellow-100 text-yellow-800 px-4 py-2 rounded-full animate-pulse">
-                <span class="text-xl">⚡</span>
-                <span class="font-semibold">턴 진행 중...</span>
+              <div v-else-if="gameStore.turnInProgress" class="inline-flex items-center gap-2 bg-yellow-100 text-yellow-800 px-3 sm:px-4 py-2 rounded-full animate-pulse">
+                <span class="text-lg sm:text-xl">⚡</span>
+                <span class="font-semibold text-sm sm:text-base">턴 진행 중...</span>
               </div>
-              <div v-else-if="gameStore.isMyTurn" class="inline-flex items-center gap-2 bg-primary-100 text-primary-800 px-4 py-2 rounded-full">
-                <span class="text-xl">🎯</span>
-                <span class="font-semibold">당신의 차례입니다!</span>
+              <div v-else-if="gameStore.isMyTurn" class="inline-flex items-center gap-2 bg-primary-100 text-primary-800 px-3 sm:px-4 py-2 rounded-full">
+                <span class="text-lg sm:text-xl">🎯</span>
+                <span class="font-semibold text-sm sm:text-base">당신의 차례입니다!</span>
               </div>
-              <div v-else class="inline-flex items-center gap-2 bg-gray-100 text-gray-600 px-4 py-2 rounded-full">
-                <span class="text-xl">⏳</span>
-                <span>{{ getCurrentPlayerName() }}의 차례</span>
+              <div v-else class="inline-flex items-center gap-2 bg-gray-100 text-gray-600 px-3 sm:px-4 py-2 rounded-full max-w-full">
+                <span class="text-lg sm:text-xl">⏳</span>
+                <span class="text-sm sm:text-base truncate">{{ getCurrentPlayerName() }}의 차례</span>
               </div>
               
               <!-- Action Feedback -->
               <div 
                 v-if="gameStore.showCardEffect && gameStore.lastAction" 
-                class="mt-3 inline-flex items-center gap-2 bg-yellow-100 text-yellow-800 px-4 py-2 rounded-full animate-pulse"
+                class="mt-2 sm:mt-3 inline-flex items-center gap-2 bg-yellow-100 text-yellow-800 px-3 sm:px-4 py-2 rounded-full animate-pulse max-w-full"
               >
-                <span class="text-xl">✨</span>
-                <span class="font-semibold">{{ gameStore.lastAction }}</span>
+                <span class="text-lg sm:text-xl">✨</span>
+                <span class="font-semibold text-sm sm:text-base truncate">{{ gameStore.lastAction }}</span>
               </div>
             </div>
           </div>
 
           <!-- Game Actions Panel -->
-          <div class="col-span-12 md:col-span-4">
+          <div class="col-span-12 lg:col-span-4">
             <div class="card-base">
-              <h3 class="font-semibold mb-3">게임 액션</h3>
+              <h3 class="font-semibold mb-3 text-sm sm:text-base">게임 액션</h3>
               
               <div class="space-y-2">
                 <!-- Single Card Discard - Primary action when no playable cards -->
@@ -259,24 +263,24 @@
         </div>
 
         <!-- My Player Area (Bottom) -->
-        <div class="card-base p-6 bg-gradient-to-r from-primary-50 to-secondary-50">
-          <div class="flex items-center justify-between mb-4">
-            <div class="flex items-center gap-3">
-              <span class="text-3xl">{{ getPlayerEmoji(myPlayerOrder) }}</span>
+        <div class="card-base p-4 sm:p-6 bg-gradient-to-r from-primary-50 to-secondary-50">
+          <div class="flex items-center justify-between mb-3 sm:mb-4">
+            <div class="flex items-center gap-2 sm:gap-3">
+              <span class="text-2xl sm:text-3xl">{{ getPlayerEmoji(myPlayerOrder) }}</span>
               <div>
-                <div class="font-semibold">{{ user?.email?.split('@')[0] || '나' }}</div>
-                <div class="text-sm text-gray-600">플레이어 {{ myPlayerOrder }}</div>
+                <div class="font-semibold text-sm sm:text-base truncate max-w-[120px] sm:max-w-none">{{ user?.email?.split('@')[0] || '나' }}</div>
+                <div class="text-xs sm:text-sm text-gray-600">플레이어 {{ myPlayerOrder }}</div>
               </div>
             </div>
             
             <div v-if="gameStore.isMyTurn" class="flex items-center gap-2 text-primary-600">
-              <span class="animate-pulse">🎯</span>
-              <span class="font-semibold">내 턴!</span>
+              <span class="animate-pulse text-lg sm:text-xl">🎯</span>
+              <span class="font-semibold text-sm sm:text-base">내 턴!</span>
             </div>
           </div>
           
           <!-- My Pigs -->
-          <div class="flex justify-center gap-6 mb-6">
+          <div class="flex justify-center gap-3 sm:gap-6 mb-4 sm:mb-6 overflow-x-auto pb-2">
             <PigCard
               v-for="pig in gameStore.myPigs" 
               :key="pig.id"
@@ -289,8 +293,8 @@
           
           <!-- My Hand -->
           <div>
-            <h4 class="font-semibold mb-3 text-center">내 손패</h4>
-            <div class="flex justify-center gap-3 flex-wrap">
+            <h4 class="font-semibold mb-2 sm:mb-3 text-center text-sm sm:text-base">내 손패</h4>
+            <div class="flex justify-center gap-2 sm:gap-3 flex-wrap px-2">
               <GameCard
                 v-for="card in gameStore.myHand.filter(c => c.card_count > 0)" 
                 :key="card.card_type"
@@ -303,7 +307,7 @@
                 @click="(cardType) => console.log('Selected card:', cardType)"
               />
               
-              <div v-if="gameStore.myHand.filter(c => c.card_count > 0).length === 0" class="text-gray-500 text-center py-8">
+              <div v-if="gameStore.myHand.filter(c => c.card_count > 0).length === 0" class="text-gray-500 text-center py-6 sm:py-8 text-sm sm:text-base">
                 손패가 비어있습니다
               </div>
             </div>
@@ -313,33 +317,33 @@
     </div>
 
     <!-- Game Rules Modal -->
-    <div v-if="showRules" class="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-      <div class="bg-white rounded-xl max-w-2xl max-h-[80vh] overflow-y-auto">
-        <div class="p-6">
-          <div class="flex items-center justify-between mb-6">
-            <h2 class="font-display text-2xl font-bold">게임 규칙</h2>
-            <button @click="showRules = false" class="text-gray-400 hover:text-gray-600">
-              <span class="text-2xl">×</span>
+    <div v-if="showRules" class="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-start sm:items-center justify-center z-50 p-2 sm:p-4">
+      <div class="bg-white rounded-xl w-full max-w-2xl max-h-[95vh] sm:max-h-[85vh] overflow-y-auto">
+        <div class="p-4 sm:p-6">
+          <div class="flex items-center justify-between mb-4 sm:mb-6 sticky top-0 bg-white pb-2 border-b sm:border-b-0">
+            <h2 class="font-display text-lg sm:text-2xl font-bold">게임 규칙</h2>
+            <button @click="showRules = false" class="text-gray-400 hover:text-gray-600 p-2">
+              <span class="text-xl sm:text-2xl">×</span>
             </button>
           </div>
           
-          <div class="prose prose-gray max-w-none">
-            <h3>🎯 게임 목표</h3>
-            <p><strong>돼지들을 더럽게 만들어야 합니다!</strong> 가장 먼저 자신의 앞에 있는 돼지 카드를 모두 진흙 목욕 중인 돼지 면으로 만들면 승리합니다.</p>
+          <div class="prose prose-gray max-w-none prose-sm sm:prose-base">
+            <h3 class="text-base sm:text-lg">🎯 게임 목표</h3>
+            <p class="text-sm sm:text-base"><strong>돼지들을 더럽게 만들어야 합니다!</strong> 가장 먼저 자신의 앞에 있는 돼지 카드를 모두 진흙 목욕 중인 돼지 면으로 만들면 승리합니다.</p>
             
-            <h3>🎮 게임 진행</h3>
-            <ol>
+            <h3 class="text-base sm:text-lg">🎮 게임 진행</h3>
+            <ol class="text-sm sm:text-base">
               <li>각 턴마다 <strong>카드 1장 사용</strong> 또는 <strong>카드 1장 버리기</strong> 중 하나를 선택합니다</li>
               <li>카드를 사용하거나 버린 후 덱에서 <strong>카드 1장을 뽑아</strong> 손패 3장을 유지합니다</li>
               <li><strong>한 번에 카드는 1장만</strong> 사용할 수 있습니다</li>
               <li>손패로 할 수 있는 일이 없다면 모든 카드를 버리고 새로 3장 뽑을 수 있습니다</li>
             </ol>
             
-            <h3>🏆 승리 조건</h3>
-            <p><strong>한 사람이 자신의 돼지 모두를 더러운 돼지로 만들면 게임에서 즉시 승리</strong>합니다.</p>
+            <h3 class="text-base sm:text-lg">🏆 승리 조건</h3>
+            <p class="text-sm sm:text-base"><strong>한 사람이 자신의 돼지 모두를 더러운 돼지로 만들면 게임에서 즉시 승리</strong>합니다.</p>
             
-            <h3>🃏 주요 카드</h3>
-            <ul>
+            <h3 class="text-base sm:text-lg">🃏 주요 카드</h3>
+            <ul class="text-sm sm:text-base">
               <li><strong>💩 진흙카드:</strong> 자신의 돼지를 더럽게 만듭니다</li>
               <li><strong>🏠 헛간카드:</strong> 돼지를 비로부터 보호합니다</li>
               <li><strong>🛁 목욕카드:</strong> 상대방의 더러운 돼지를 깨끗하게 만듭니다</li>

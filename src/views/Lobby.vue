@@ -1,53 +1,53 @@
 <template>
-  <div class="space-y-8">
+  <div class="space-y-4 sm:space-y-8">
     <!-- Header -->
-    <div class="flex items-center justify-between">
+    <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
       <div>
-        <h1 class="font-game text-4xl text-primary-600 flex items-center gap-3">
-          <span class="text-5xl">🏠</span>
+        <h1 class="font-game text-2xl sm:text-4xl text-primary-600 flex items-center gap-2 sm:gap-3">
+          <span class="text-3xl sm:text-5xl">🏠</span>
           게임 로비
         </h1>
-        <p class="text-gray-600 mt-2">친구들과 함께 드렉사우 게임을 즐겨보세요!</p>
+        <p class="text-gray-600 mt-1 sm:mt-2 text-sm sm:text-base">친구들과 함께 드렉사우 게임을 즐겨보세요!</p>
       </div>
       
       <button 
         @click="showCreateRoom = true"
-        class="btn-primary"
+        class="btn-primary shrink-0"
       >
-        <span class="text-xl mr-2">➕</span>
+        <span class="text-lg sm:text-xl mr-2">➕</span>
         방 만들기
       </button>
     </div>
 
     <!-- Stats -->
-    <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
-      <div class="card-base text-center">
-        <div class="text-3xl mb-2">🎮</div>
-        <div class="text-2xl font-bold text-primary-600">{{ rooms.length }}</div>
-        <div class="text-gray-600">총 게임방</div>
+    <div class="grid grid-cols-3 gap-3 sm:gap-6">
+      <div class="card-base text-center p-3 sm:p-4">
+        <div class="text-2xl sm:text-3xl mb-1 sm:mb-2">🎮</div>
+        <div class="text-lg sm:text-2xl font-bold text-primary-600">{{ rooms.length }}</div>
+        <div class="text-gray-600 text-xs sm:text-sm">총 게임방</div>
       </div>
       
-      <div class="card-base text-center">
-        <div class="text-3xl mb-2">⏳</div>
-        <div class="text-2xl font-bold text-secondary-600">{{ availableRooms.length }}</div>
-        <div class="text-gray-600">참가 가능한 방</div>
+      <div class="card-base text-center p-3 sm:p-4">
+        <div class="text-2xl sm:text-3xl mb-1 sm:mb-2">⏳</div>
+        <div class="text-lg sm:text-2xl font-bold text-secondary-600">{{ availableRooms.length }}</div>
+        <div class="text-gray-600 text-xs sm:text-sm">참가 가능</div>
       </div>
       
-      <div class="card-base text-center">
-        <div class="text-3xl mb-2">👑</div>
-        <div class="text-2xl font-bold text-mud-600">{{ myRooms.length }}</div>
-        <div class="text-gray-600">내가 만든 방</div>
+      <div class="card-base text-center p-3 sm:p-4">
+        <div class="text-2xl sm:text-3xl mb-1 sm:mb-2">👑</div>
+        <div class="text-lg sm:text-2xl font-bold text-mud-600">{{ myRooms.length }}</div>
+        <div class="text-gray-600 text-xs sm:text-sm">내가 생성</div>
       </div>
     </div>
 
     <!-- Room List -->
     <div class="card-base">
-      <div class="flex items-center justify-between mb-6">
-        <h2 class="font-display text-xl font-semibold">게임방 목록</h2>
+      <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-4 sm:mb-6 gap-3 sm:gap-0">
+        <h2 class="font-display text-lg sm:text-xl font-semibold">게임방 목록</h2>
         <button 
           @click="fetchRooms" 
           :disabled="loading"
-          class="text-primary-600 hover:text-primary-800 transition-colors"
+          class="text-primary-600 hover:text-primary-800 transition-colors shrink-0 self-start sm:self-auto"
         >
           <span v-if="loading" class="loading-spinner"></span>
           <span v-else class="text-xl">🔄</span>
